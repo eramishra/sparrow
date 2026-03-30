@@ -1,6 +1,6 @@
 /**
  * Strava API client
- * Handles token refresh and fetching recent activities
+ * Handles token refresh and fetching activities
  */
 
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
@@ -48,9 +48,11 @@ async function fetchActivities(accessToken, after, before) {
   }
 
   return activities.map((a) => ({
+    id: a.id,
     name: a.name,
     type: a.type,
     date: new Date(a.start_date).toDateString(),
+    startDateIso: new Date(a.start_date).toISOString(),
     distanceKm: (a.distance / 1000).toFixed(2),
     durationMin: Math.round(a.moving_time / 60),
     avgHeartRate: a.average_heartrate ?? null,
@@ -58,16 +60,9 @@ async function fetchActivities(accessToken, after, before) {
   }));
 }
 
-export async function getActivitiesLastWeek() {
+export async function getActivities(daysBack = 7) {
   const accessToken = await getAccessToken();
   const now = Math.floor(Date.now() / 1000);
-  const sevenDaysAgo = now - 7 * 24 * 60 * 60;
-  return fetchActivities(accessToken, sevenDaysAgo, now);
-}
-
-export async function getActivitiesLastThreeMonths() {
-  const accessToken = await getAccessToken();
-  const now = Math.floor(Date.now() / 1000);
-  const threeMonthsAgo = now - 90 * 24 * 60 * 60;
-  return fetchActivities(accessToken, threeMonthsAgo, now);
+  const after = now - daysBack * 24 * 60 * 60;
+  return fetchActivities(accessToken, after, now);
 }

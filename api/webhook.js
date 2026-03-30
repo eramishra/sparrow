@@ -104,33 +104,31 @@ export default async function handler(req, res) {
   const secret = req.headers["x-telegram-bot-api-secret-token"];
   if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) return res.status(403).end();
 
-  // Acknowledge Telegram immediately (must respond within 10s)
-  res.status(200).json({ ok: true });
-
   try {
     const { message } = req.body;
-    if (!message?.text) return;
 
-    // Only respond to the configured chat
-    if (String(message.chat.id) !== process.env.TELEGRAM_CHAT_ID) return;
+    if (message?.text && String(message.chat.id) === process.env.TELEGRAM_CHAT_ID) {
+      const text = message.text.trim();
 
-    const text = message.text.trim();
-
-    if (text.startsWith("/update ")) {
-      await handleUpdate(text.slice(8).trim());
-    } else if (text === "/start") {
-      await sendTelegramMessage(
-        "Hi! I'm your workout coach bot.\n\n" +
-        "• Ask me anything about your plan\n" +
-        "• Use `/update <text>` to save context (e.g. upcoming races, injuries)\n\n" +
-        "_Examples:_\n" +
-        "`/update I have a 10k race this Sunday`\n" +
-        "`Should I rest tomorrow?`"
-      );
-    } else {
-      await handleQuestion(text);
+      if (text.startsWith("/update ")) {
+        await handleUpdate(text.slice(8).trim());
+      } else if (text === "/start") {
+        await sendTelegramMessage(
+          "Hi! I'm your workout coach bot.\n\n" +
+          "• Ask me anything about your plan\n" +
+          "• Use `/update <text>` to save context (e.g. upcoming races, injuries)\n\n" +
+          "_Examples:_\n" +
+          "`/update I have a 10k race this Sunday`\n" +
+          "`Should I rest tomorrow?`"
+        );
+      } else {
+        await handleQuestion(text);
+      }
     }
   } catch (err) {
     console.error("Webhook error:", err);
   }
+
+  // Respond after all async work is done
+  res.status(200).json({ ok: true });
 }

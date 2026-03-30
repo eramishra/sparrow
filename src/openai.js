@@ -1,11 +1,11 @@
 /**
- * OpenAI integration
+ * Claude (Anthropic) integration
  * Generates a 7-day workout plan based on last week's Strava activities
  */
 
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function generateWeeklyPlan(activities) {
   const activitySummary =
@@ -50,13 +50,13 @@ Guidelines:
 - Match workout types to what the athlete already does
 - Keep notes practical and motivating (1 sentence max)`;
 
-  const response = await client.chat.completions.create({
-    model: "gpt-4o",
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
   });
 
-  const content = response.choices[0].message.content.trim();
+  const content = response.content[0].text.trim();
 
   try {
     return JSON.parse(content);
@@ -64,6 +64,6 @@ Guidelines:
     // Strip markdown code fences if present
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) return JSON.parse(jsonMatch[1].trim());
-    throw new Error(`OpenAI returned invalid JSON: ${content}`);
+    throw new Error(`Claude returned invalid JSON: ${content}`);
   }
 }

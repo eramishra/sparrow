@@ -8,6 +8,6 @@
     "daily-reminder": "node src/daily-reminder.js"
   },
   "dependencies": {
-    "openai": "^4.28.0"
+    "@anthropic-ai/sdk": "^0.39.0"
   }
 }

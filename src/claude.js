@@ -7,27 +7,30 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export async function generateWeeklyPlan(activities) {
-  const activitySummary =
-    activities.length === 0
-      ? "No activities recorded last week (rest week)."
-      : activities
-          .map(
-            (a) =>
-              `- ${a.date}: ${a.type} — ${a.distanceKm}km, ${a.durationMin} min` +
-              (a.avgHeartRate ? `, avg HR ${a.avgHeartRate} bpm` : "") +
-              (a.elevationGain ? `, ${a.elevationGain}m elevation` : "")
-          )
-          .join("\n");
+function formatActivities(activities) {
+  if (activities.length === 0) return "None recorded.";
+  return activities
+    .map(
+      (a) =>
+        `- ${a.date}: ${a.type} — ${a.distanceKm}km, ${a.durationMin} min` +
+        (a.avgHeartRate ? `, avg HR ${a.avgHeartRate} bpm` : "") +
+        (a.elevationGain ? `, ${a.elevationGain}m elevation` : "")
+    )
+    .join("\n");
+}
 
+export async function generateWeeklyPlan(recentActivities, historyActivities) {
   const today = new Date();
   const monday = new Date(today);
   monday.setDate(today.getDate() + 1); // Plan starts Monday
 
-  const prompt = `You are a personal fitness coach. Based on the athlete's activities from last week, create a balanced 7-day workout plan for the upcoming week starting ${monday.toDateString()}.
+  const prompt = `You are a personal fitness coach. Using the athlete's 3-month activity history for fitness context and last week's activities for current load, create a balanced 7-day workout plan for the upcoming week starting ${monday.toDateString()}.
 
-Last week's activities:
-${activitySummary}
+Last 3 months of activity history (for fitness level & trend context):
+${formatActivities(historyActivities)}
+
+Last week's activities (for current load & recovery needs):
+${formatActivities(recentActivities)}
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
 {
@@ -48,6 +51,7 @@ Guidelines:
 - Balance intensity based on last week's load
 - Include at least 1-2 rest or recovery days
 - Match workout types to what the athlete already does
+- Consider fitness trends from the 3-month history (improving, plateau, overtraining signs)
 - Keep notes practical and motivating (1 sentence max)`;
 
   const response = await client.messages.create({

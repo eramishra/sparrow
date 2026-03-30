@@ -7,17 +7,20 @@
  */
 
 import { writeFileSync } from "fs";
-import { getActivitiesLastWeek } from "./strava.js";
+import { getActivitiesLastWeek, getActivitiesLastThreeMonths } from "./strava.js";
 import { generateWeeklyPlan } from "./claude.js";
 import { sendMessage } from "./telegram.js";
 
 async function main() {
-  console.log("Fetching last week's Strava activities...");
-  const activities = await getActivitiesLastWeek();
-  console.log(`Found ${activities.length} activities.`);
+  console.log("Fetching Strava activities...");
+  const [recentActivities, historyActivities] = await Promise.all([
+    getActivitiesLastWeek(),
+    getActivitiesLastThreeMonths(),
+  ]);
+  console.log(`Found ${recentActivities.length} activities this week, ${historyActivities.length} over last 3 months.`);
 
-  console.log("Generating weekly plan with OpenAI...");
-  const plan = await generateWeeklyPlan(activities);
+  console.log("Generating weekly plan with Claude...");
+  const plan = await generateWeeklyPlan(recentActivities, historyActivities);
 
   // Save plan to file (GitHub Actions will commit this back to the repo)
   writeFileSync("plan.json", JSON.stringify(plan, null, 2));

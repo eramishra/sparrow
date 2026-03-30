@@ -26,22 +26,26 @@ export async function getAccessToken() {
   return data.access_token;
 }
 
-export async function getActivitiesLastWeek() {
-  const accessToken = await getAccessToken();
+async function fetchActivities(accessToken, after, before) {
+  const activities = [];
+  let page = 1;
 
-  const now = Math.floor(Date.now() / 1000);
-  const sevenDaysAgo = now - 7 * 24 * 60 * 60;
+  while (true) {
+    const res = await fetch(
+      `${STRAVA_API_BASE}/athlete/activities?after=${after}&before=${before}&per_page=100&page=${page}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
 
-  const res = await fetch(
-    `${STRAVA_API_BASE}/athlete/activities?after=${sevenDaysAgo}&before=${now}&per_page=30`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
+    if (!res.ok) {
+      throw new Error(`Failed to fetch Strava activities: ${res.status} ${await res.text()}`);
+    }
 
-  if (!res.ok) {
-    throw new Error(`Failed to fetch Strava activities: ${res.status} ${await res.text()}`);
+    const batch = await res.json();
+    if (batch.length === 0) break;
+
+    activities.push(...batch);
+    page++;
   }
-
-  const activities = await res.json();
 
   return activities.map((a) => ({
     name: a.name,
@@ -52,4 +56,18 @@ export async function getActivitiesLastWeek() {
     avgHeartRate: a.average_heartrate ?? null,
     elevationGain: a.total_elevation_gain ?? 0,
   }));
+}
+
+export async function getActivitiesLastWeek() {
+  const accessToken = await getAccessToken();
+  const now = Math.floor(Date.now() / 1000);
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60;
+  return fetchActivities(accessToken, sevenDaysAgo, now);
+}
+
+export async function getActivitiesLastThreeMonths() {
+  const accessToken = await getAccessToken();
+  const now = Math.floor(Date.now() / 1000);
+  const threeMonthsAgo = now - 90 * 24 * 60 * 60;
+  return fetchActivities(accessToken, threeMonthsAgo, now);
 }

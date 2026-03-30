@@ -8,7 +8,7 @@
 
 import { writeFileSync } from "fs";
 import { getActivitiesLastWeek } from "./strava.js";
-import { generateWeeklyPlan } from "./openai.js";
+import { generateWeeklyPlan } from "./claude.js";
 import { sendMessage } from "./telegram.js";
 
 async function main() {

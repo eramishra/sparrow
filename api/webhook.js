@@ -7,8 +7,8 @@
  *   anything else   — answers the question using Claude + current plan + history
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { answerQuestion } from "../src/claude.js";
+import { getActivitiesSince } from "../src/strava.js";
 
 const REPO = process.env.GH_REPO; // e.g. "eramishra/workout-bot"
 const GH_API = "https://api.github.com";
@@ -86,11 +86,21 @@ async function handleQuestion(question) {
   const plan = planFile.content ? JSON.parse(planFile.content) : null;
   const history = historyFile.content ? JSON.parse(historyFile.content) : { activities: [] };
 
-  // Pass last 4 weeks of history for Q&A context (keeps prompt lean)
-  const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
-  const recentHistory = history.activities.filter((a) => a.startDateIso >= fourWeeksAgo);
+  // Fetch any new Strava activities since the last history entry for real-time context
+  const fetchSince = history.lastUpdated
+    ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const liveActivities = await getActivitiesSince(fetchSince);
 
-  const answer = await answerQuestion(question, plan, recentHistory, contextFile.content);
+  // Combine live activities with last 4 weeks of history for Q&A context
+  const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
+  const historySince4Weeks = history.activities.filter((a) => a.startDateIso >= fourWeeksAgo);
+  const existingIds = new Set(historySince4Weeks.map((a) => a.id));
+  const recentActivities = [
+    ...historySince4Weeks,
+    ...liveActivities.filter((a) => !existingIds.has(a.id)),
+  ];
+
+  const answer = await answerQuestion(question, plan, recentActivities, contextFile.content);
   await sendTelegramMessage(answer);
 }
 

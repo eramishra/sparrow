@@ -60,7 +60,16 @@ async function fetchActivities(accessToken, after, before) {
   }));
 }
 
-export async function getActivities(daysBack = 7) {
+// Fetch activities since a given ISO date string (or daysBack as fallback)
+export async function getActivitiesSince(sinceIso) {
+  const accessToken = await getAccessToken();
+  const now = Math.floor(Date.now() / 1000);
+  const after = Math.floor(new Date(sinceIso).getTime() / 1000);
+  return fetchActivities(accessToken, after, now);
+}
+
+// Used only by the bootstrap script
+export async function getActivities(daysBack = 90) {
   const accessToken = await getAccessToken();
   const now = Math.floor(Date.now() / 1000);
   const after = now - daysBack * 24 * 60 * 60;

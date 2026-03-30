@@ -10,7 +10,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
-import { getActivities } from "./strava.js";
+import { getActivitiesSince } from "./strava.js";
 import { generateWeeklyPlan } from "./claude.js";
 import { sendMessage } from "./telegram.js";
 
@@ -37,8 +37,9 @@ async function main() {
   const history = loadHistory();
   console.log(`Loaded ${history.activities.length} activities from history.`);
 
-  console.log("Fetching last week's Strava activities...");
-  const recentActivities = await getActivities(7);
+  const fetchSince = history.lastUpdated ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  console.log(`Fetching Strava activities since ${fetchSince}...`);
+  const recentActivities = await getActivitiesSince(fetchSince);
   console.log(`Found ${recentActivities.length} new activities.`);
 
   // Merge new activities into history and prune to 6 months

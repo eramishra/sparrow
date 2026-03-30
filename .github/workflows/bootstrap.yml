@@ -31,8 +31,8 @@ jobs:
 
       - name: Commit fitness-history.json
         run: |
-          git config user.name "workout-bot"
-          git config user.email "workout-bot@users.noreply.github.com"
+          git config user.name "sparrow"
+          git config user.email "sparrow@users.noreply.github.com"
           git add fitness-history.json
           git diff --staged --quiet || git commit -m "chore: bootstrap fitness history [skip ci]"
           git push

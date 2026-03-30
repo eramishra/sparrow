@@ -2,7 +2,7 @@ name: Send Daily Workout Reminder
 
 on:
   schedule:
-    - cron: "0 20 * * *"  # Every night at 8 PM UTC
+    - cron: "30 14 * * *"  # Every night at 8 PM IST (UTC+5:30)
   workflow_dispatch:        # Allow manual trigger
 
 jobs:

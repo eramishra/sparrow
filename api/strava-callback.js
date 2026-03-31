@@ -4,7 +4,7 @@
 
 import { getUserByChatId, upsertUser, saveActivities, saveWeeklyPlan, getActivitiesForUser } from "../src/supabase.js";
 import { getActivities } from "../src/strava.js";
-import { generateWeeklyPlan } from "../src/gemini.js";
+import { generateWeeklyPlan } from "../src/ai.js";
 import { sendMessage } from "../src/telegram.js";
 
 export default async function handler(req, res) {
@@ -56,7 +56,8 @@ export default async function handler(req, res) {
       getActivitiesForUser(updatedUser.id, weekAgo),
     ]);
 
-    const plan = await generateWeeklyPlan(recent, history, updatedUser.context_notes || "", updatedUser.fitness_background);
+    const llmConfig = { provider: updatedUser.preferred_llm || "gemini", apiKey: updatedUser.llm_api_key };
+    const plan = await generateWeeklyPlan(recent, history, updatedUser.context_notes || "", updatedUser.fitness_background, llmConfig);
 
     const today = new Date();
     const monday = new Date(today);
@@ -68,8 +69,8 @@ export default async function handler(req, res) {
 
     res.status(200).send(`<html><body style="font-family:sans-serif;text-align:center;padding:40px;max-width:400px;margin:auto"><h2>✅ Strava Connected!</h2><p>Your activity history has been imported and your first workout plan is ready.</p><p>Return to Telegram to see your plan!</p></body></html>`);
   } catch (err) {
-    console.error("Strava callback error:", err);
-    if (chatId) await sendMessage(chatId, "Something went wrong. Please type /connect to try again.").catch(() => {});
+    console.error("[strava-callback] ERROR for chat_id=%s: %s\n%s", chatId, err.message, err.stack);
+    if (chatId) await sendMessage(chatId, "Something went wrong. Please type /connect to try again.").catch((e) => console.error("[strava-callback] Failed to send error message:", e.message));
     res.status(500).send("<html><body style='font-family:sans-serif;text-align:center;padding:40px'><h2>Something went wrong.</h2><p>Return to Telegram and try /connect again.</p></body></html>");
   }
 }

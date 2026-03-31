@@ -12,7 +12,7 @@
 
 import { getUserByChatId, upsertUser, appendContext, getLatestPlan, getActivitiesForUser, getLastActivityDate, saveActivities } from "../src/supabase.js";
 import { sendMessage } from "../src/telegram.js";
-import { answerQuestion } from "../src/gemini.js";
+import { answerQuestion } from "../src/ai.js";
 import { getActivitiesSince } from "../src/strava.js";
 
 function getStravaAuthUrl(chatId) {
@@ -36,7 +36,7 @@ async function handleOnboarding(user, chatId, text) {
     await sendMessage(
       chatId,
       (isNew ? "Welcome! Starting fresh is exciting 💪\n\n" : "Great, let's import your training history!\n\n") +
-        `Connect your Strava account so I can track your activities:\n${authUrl}\n\n` +
+        `Connect your Strava account so I can track your activities:\n[Click here to connect](${authUrl})\n\n` +
         "_Don't have Strava? Send /skip to continue without it._"
     );
     return;
@@ -75,7 +75,31 @@ async function handleActiveUser(user, chatId, text) {
   }
 
   if (text === "/connect") {
-    await sendMessage(chatId, `Connect your Strava account:\n${getStravaAuthUrl(chatId)}`);
+    await sendMessage(chatId, `Connect your Strava account: [Click here](${getStravaAuthUrl(chatId)})`);
+    return;
+  }
+
+  if (text.startsWith("/llm")) {
+    const parts = text.split(" ");
+    const provider = parts[1]?.toLowerCase();
+    const apiKey = parts[2]?.trim();
+
+    if (!provider || provider === "status") {
+      const current = user.preferred_llm || "gemini";
+      await sendMessage(chatId, `Current AI: *${current}*\n\nTo switch:\n• \`/llm gemini\` — free, default\n• \`/llm claude <api_key>\` — Claude Haiku\n• \`/llm openai <api_key>\` — GPT-4o mini`);
+      return;
+    }
+    if (provider === "gemini") {
+      await upsertUser(chatId, { preferred_llm: "gemini", llm_api_key: null });
+      await sendMessage(chatId, "Switched to *Gemini* (free tier). ✅");
+      return;
+    }
+    if ((provider === "claude" || provider === "openai") && apiKey) {
+      await upsertUser(chatId, { preferred_llm: provider, llm_api_key: apiKey });
+      await sendMessage(chatId, `Switched to *${provider}*. ✅\n\n_Delete your previous message to keep your API key private._`);
+      return;
+    }
+    await sendMessage(chatId, `Usage: \`/llm gemini\` or \`/llm claude <api_key>\` or \`/llm openai <api_key>\``);
     return;
   }
 
@@ -106,7 +130,8 @@ async function handleActiveUser(user, chatId, text) {
     }
   }
 
-  const answer = await answerQuestion(text, plan, recentActivities, user.context_notes);
+  const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
+  const answer = await answerQuestion(text, plan, recentActivities, user.context_notes, llmConfig);
   await sendMessage(chatId, answer);
 }
 
@@ -151,7 +176,7 @@ export default async function handler(req, res) {
       await handleActiveUser(user, chatId, text);
     }
   } catch (err) {
-    console.error("Webhook error:", err);
+    console.error("[webhook] ERROR for chat_id=%s text=%s: %s\n%s", req.body?.message?.chat?.id, req.body?.message?.text, err.message, err.stack);
   }
 
   res.status(200).json({ ok: true });

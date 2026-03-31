@@ -4,6 +4,7 @@
   "description": "AI fitness coach — connects Strava, plans weekly workouts, sends daily Telegram reminders",
   "type": "module",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.47.0"
   }

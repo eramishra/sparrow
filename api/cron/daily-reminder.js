@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       success++;
     } catch (err) {
       failed++;
-      console.error(`Reminder failed for ${user.telegram_chat_id}:`, err.message);
+      console.error(`[daily-reminder] ERROR for chat_id=${user.telegram_chat_id}: ${err.message}\n${err.stack}`);
     }
   }
 

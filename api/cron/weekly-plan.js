@@ -5,7 +5,7 @@
 
 import { getAllActiveUsers, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan, upsertUser } from "../../src/supabase.js";
 import { getActivitiesSince } from "../../src/strava.js";
-import { generateWeeklyPlan } from "../../src/gemini.js";
+import { generateWeeklyPlan } from "../../src/ai.js";
 import { sendMessage } from "../../src/telegram.js";
 
 export default async function handler(req, res) {
@@ -38,7 +38,8 @@ export default async function handler(req, res) {
 
       const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
       const history = await getActivitiesForUser(user.id, sixMonthsAgo);
-      const plan = await generateWeeklyPlan(recentActivities, history, user.context_notes, user.fitness_background);
+      const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
+      const plan = await generateWeeklyPlan(recentActivities, history, user.context_notes, user.fitness_background, llmConfig);
 
       await saveWeeklyPlan(user.id, weekStarting, plan);
 
@@ -49,7 +50,7 @@ export default async function handler(req, res) {
       console.log(`Plan generated for ${user.telegram_chat_id}`);
     } catch (err) {
       failed++;
-      console.error(`Failed for ${user.telegram_chat_id}:`, err.message);
+      console.error(`[weekly-plan] ERROR for chat_id=${user.telegram_chat_id}: ${err.message}\n${err.stack}`);
       if (err.message === "STRAVA_DEAUTHORIZED") {
         await upsertUser(user.telegram_chat_id, { strava_connected: false }).catch(() => {});
         await sendMessage(user.telegram_chat_id, "Your Strava connection has expired. Use /connect to reconnect.").catch(() => {});

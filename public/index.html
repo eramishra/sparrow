@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sparrow — AI Fitness Coach</title>
+  <meta name="description" content="Sparrow is your personal AI fitness coach on Telegram. Connects to Strava, builds weekly workout plans, and answers your training questions." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0d;
+      --surface: #161616;
+      --surface2: #1e1e1e;
+      --border: #2a2a2a;
+      --text: #f0f0f0;
+      --muted: #888;
+      --accent: #fc5200;
+      --accent2: #229ED9;
+      --green: #22c55e;
+      --purple: #a855f7;
+      --radius: 12px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px;
+      background: rgba(13,13,13,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; }
+    .nav-logo span { font-size: 22px; }
+    .nav-links { display: flex; gap: 28px; font-size: 14px; color: var(--muted); }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      background: var(--accent2); color: #fff;
+      padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      transition: opacity .2s;
+    }
+    .nav-cta:hover { opacity: .85; }
+
+    /* ── Sections ── */
+    section { padding: 80px 32px; max-width: 900px; margin: 0 auto; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 100px 32px 80px;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(252,82,0,.12); color: var(--accent);
+      padding: 4px 14px; border-radius: 99px; font-size: 13px; font-weight: 600;
+      margin-bottom: 24px; border: 1px solid rgba(252,82,0,.25);
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: 800; letter-spacing: -1.5px; line-height: 1.1;
+      margin-bottom: 20px;
+    }
+    .hero h1 em { font-style: normal; color: var(--accent); }
+    .hero p {
+      font-size: 18px; color: var(--muted); max-width: 540px; margin: 0 auto 36px;
+    }
+    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      background: var(--accent2); color: #fff;
+      padding: 14px 28px; border-radius: 10px; font-size: 16px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+      transition: opacity .2s;
+    }
+    .btn-primary:hover { opacity: .88; }
+    .btn-secondary {
+      background: var(--surface2); color: var(--text);
+      padding: 14px 28px; border-radius: 10px; font-size: 16px; font-weight: 600;
+      border: 1px solid var(--border);
+      transition: border-color .2s;
+    }
+    .btn-secondary:hover { border-color: var(--muted); }
+
+    /* ── Steps ── */
+    .steps-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px; margin-top: 48px;
+    }
+    .step-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px;
+    }
+    .step-num {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px; margin-bottom: 16px;
+    }
+    .step-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .step-card p { font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+    /* ── Section headings ── */
+    .section-label {
+      font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+    }
+    h2 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 12px; }
+    .section-sub { color: var(--muted); font-size: 16px; margin-bottom: 40px; }
+
+    /* ── Commands ── */
+    .commands-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .commands-table thead th {
+      text-align: left; padding: 10px 16px;
+      font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--muted); border-bottom: 1px solid var(--border);
+    }
+    .commands-table tbody tr { border-bottom: 1px solid var(--border); }
+    .commands-table tbody tr:last-child { border-bottom: none; }
+    .commands-table tbody td { padding: 14px 16px; font-size: 14px; vertical-align: top; }
+    .cmd { font-family: monospace; font-size: 13px; background: var(--surface2); color: var(--accent2); padding: 3px 8px; border-radius: 5px; white-space: nowrap; }
+    .cmd-desc { color: var(--muted); line-height: 1.5; }
+    .tag {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: 99px; margin-left: 6px; vertical-align: middle;
+    }
+    .tag-free { background: rgba(34,197,94,.15); color: var(--green); }
+    .tag-new { background: rgba(168,85,247,.15); color: var(--purple); }
+
+    /* ── Models ── */
+    .models-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px; margin-top: 40px;
+    }
+    .model-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px; position: relative; overflow: hidden;
+    }
+    .model-card.default { border-color: rgba(34,197,94,.4); }
+    .model-card.claude { border-color: rgba(232,164,92,.4); }
+    .model-card.openai { border-color: rgba(100,210,172,.4); }
+    .model-badge {
+      position: absolute; top: 16px; right: 16px;
+      font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px;
+    }
+    .badge-free { background: rgba(34,197,94,.15); color: var(--green); }
+    .badge-paid { background: rgba(255,255,255,.06); color: var(--muted); }
+    .model-icon { font-size: 28px; margin-bottom: 14px; }
+    .model-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .model-card .model-sub { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+    .model-card ul { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+    .model-card ul li { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: flex-start; }
+    .model-card ul li::before { content: "✓"; color: var(--green); flex-shrink: 0; }
+    .model-setup {
+      background: var(--surface2); border-radius: 8px; padding: 14px;
+      font-size: 13px; line-height: 1.8;
+    }
+    .model-setup strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+    .model-setup code { font-family: monospace; color: var(--accent2); font-size: 12px; word-break: break-all; }
+    .model-setup a { color: var(--accent2); text-decoration: underline; text-underline-offset: 2px; }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px solid var(--border); max-width: 900px; margin: 0 auto; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center; padding: 40px 32px;
+      color: var(--muted); font-size: 13px;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+
+    @media (max-width: 600px) {
+      nav { padding: 14px 20px; }
+      .nav-links { display: none; }
+      section { padding: 60px 20px; }
+      .hero { padding: 72px 20px 60px; }
+      .commands-table thead { display: none; }
+      .commands-table tbody td:first-child { padding-bottom: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo"><span>🐦</span> Sparrow</div>
+  <div class="nav-links">
+    <a href="#how-it-works">How it works</a>
+    <a href="#commands">Commands</a>
+    <a href="#models">AI Models</a>
+  </div>
+  <a class="nav-cta" href="https://t.me/isparo_bot" target="_blank">Open in Telegram →</a>
+</nav>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="hero-badge">🏃 Powered by Strava + AI</div>
+  <h1>Your personal<br /><em>AI fitness coach</em><br />on Telegram</h1>
+  <p>Sparrow connects to your Strava, builds a weekly workout plan tailored to your training history, and answers your fitness questions — all inside Telegram.</p>
+  <div class="hero-actions">
+    <a class="btn-primary" href="https://t.me/isparo_bot" target="_blank">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L6.26 14.4l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.556 2.186z"/></svg>
+      Start on Telegram
+    </a>
+    <a class="btn-secondary" href="#how-it-works">See how it works</a>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- How it works -->
+<section id="how-it-works">
+  <div class="section-label">Getting started</div>
+  <h2>Up and running in 3 steps</h2>
+  <p class="section-sub">No app to download. Just Telegram and optionally a Strava account.</p>
+  <div class="steps-grid">
+    <div class="step-card">
+      <div class="step-num">1</div>
+      <h3>Open the bot</h3>
+      <p>Search for <strong>@isparo_bot</strong> on Telegram and send <code>/start</code>. Sparrow will greet you and ask about your fitness background.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">2</div>
+      <h3>Connect Strava</h3>
+      <p>Link your Strava account so Sparrow can import your activity history. Your last 90 days of workouts are used to build a personalised plan. Don't have Strava? You can skip this step.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">3</div>
+      <h3>Get your plan</h3>
+      <p>Sparrow generates your first weekly workout plan instantly. Every Sunday evening you'll receive a fresh plan, and every night a reminder for the next day's session.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- Commands -->
+<section id="commands">
+  <div class="section-label">Reference</div>
+  <h2>Bot commands</h2>
+  <p class="section-sub">Everything you can say to Sparrow.</p>
+
+  <table class="commands-table">
+    <thead>
+      <tr>
+        <th>Command</th>
+        <th>What it does</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="cmd">/start</span></td>
+        <td class="cmd-desc">Begin onboarding or get a welcome-back summary with all available commands.</td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/plan</span></td>
+        <td class="cmd-desc">Show your current week's workout plan with each day's session, duration, and coaching notes.</td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/update &lt;text&gt;</span></td>
+        <td class="cmd-desc">Save a note about your goals, an upcoming race, or anything that should influence your next plan. Example: <code>/update Marathon on April 20, need to peak this week</code></td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/connect</span></td>
+        <td class="cmd-desc">Connect or reconnect your Strava account. Use this if you skipped Strava during onboarding or your connection expired.</td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/llm</span></td>
+        <td class="cmd-desc">Check which AI model is powering your coach. <span class="tag tag-new">New</span></td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/llm gemini</span></td>
+        <td class="cmd-desc">Switch to Gemini 2.5 Flash — free, no API key needed. <span class="tag tag-free">Free</span></td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/llm claude &lt;api_key&gt;</span></td>
+        <td class="cmd-desc">Switch to Claude Haiku (Anthropic). Requires your own Anthropic API key. See the <a href="#models" style="color:var(--accent2)">Models</a> section for setup instructions.</td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/llm openai &lt;api_key&gt;</span></td>
+        <td class="cmd-desc">Switch to GPT-4o mini (OpenAI). Requires your own OpenAI API key. See the <a href="#models" style="color:var(--accent2)">Models</a> section for setup instructions.</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="padding: 10px 16px; color: var(--muted); font-size: 13px; font-style: italic;">
+          Anything else you type is treated as a question to your AI coach — ask about your training load, recovery, technique, nutrition, or anything fitness related.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<hr class="divider" />
+
+<!-- AI Models -->
+<section id="models">
+  <div class="section-label">AI Models</div>
+  <h2>Choose your AI coach</h2>
+  <p class="section-sub">Sparrow works out of the box with Gemini (free). Switch to Claude or OpenAI if you want more detailed, nuanced responses and are happy to use your own API key.</p>
+
+  <div class="models-grid">
+
+    <!-- Gemini -->
+    <div class="model-card default">
+      <span class="model-badge badge-free">Default · Free</span>
+      <div class="model-icon">✦</div>
+      <h3>Gemini 2.5 Flash</h3>
+      <p class="model-sub">Google — no API key needed</p>
+      <ul>
+        <li>Free with no billing setup</li>
+        <li>Fast response times</li>
+        <li>Good for everyday coaching questions</li>
+      </ul>
+      <div class="model-setup">
+        <strong>How to activate</strong>
+        Gemini is already active by default. To switch back after trying another model:<br />
+        <code>/llm gemini</code>
+      </div>
+    </div>
+
+    <!-- Claude -->
+    <div class="model-card claude">
+      <span class="model-badge badge-paid">Paid · Your key</span>
+      <div class="model-icon">◆</div>
+      <h3>Claude Haiku</h3>
+      <p class="model-sub">Anthropic — detailed, well-structured responses</p>
+      <ul>
+        <li>More detailed coaching explanations</li>
+        <li>Better structured weekly plans</li>
+        <li>Strong reasoning about training load</li>
+      </ul>
+      <div class="model-setup">
+        <strong>Setup</strong>
+        1. Go to <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a><br />
+        2. Create an account and add billing credits<br />
+        3. Go to <strong>API Keys</strong> → <strong>Create Key</strong><br />
+        4. Copy your key (starts with <code>sk-ant-</code>)<br />
+        5. In Telegram, send:<br />
+        <code>/llm claude sk-ant-YOUR_KEY_HERE</code><br /><br />
+        <em style="color:var(--muted);font-size:12px">⚠ Delete the message after sending to protect your key.</em>
+      </div>
+    </div>
+
+    <!-- OpenAI -->
+    <div class="model-card openai">
+      <span class="model-badge badge-paid">Paid · Your key</span>
+      <div class="model-icon">⬡</div>
+      <h3>GPT-4o mini</h3>
+      <p class="model-sub">OpenAI — fast and capable</p>
+      <ul>
+        <li>Concise, practical coaching advice</li>
+        <li>Widely used and well-tested</li>
+        <li>Cost-effective among paid models</li>
+      </ul>
+      <div class="model-setup">
+        <strong>Setup</strong>
+        1. Go to <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a><br />
+        2. Create an account and add billing credits<br />
+        3. Click <strong>Create new secret key</strong><br />
+        4. Copy your key (starts with <code>sk-</code>)<br />
+        5. In Telegram, send:<br />
+        <code>/llm openai sk-YOUR_KEY_HERE</code><br /><br />
+        <em style="color:var(--muted);font-size:12px">⚠ Delete the message after sending to protect your key.</em>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- Footer -->
+<footer>
+  <p style="font-size:22px;margin-bottom:8px">🐦</p>
+  <p><strong>Sparrow</strong> — open source AI fitness coach</p>
+  <p style="margin-top:8px">
+    <a href="https://t.me/isparo_bot" target="_blank">Telegram</a> ·
+    <a href="https://github.com/eramishra/sparrow" target="_blank">GitHub</a>
+  </p>
+  <p style="margin-top:16px;font-size:12px">Built with Strava, Telegram Bot API, Supabase, and Vercel.</p>
+</footer>
+
+</body>
+</html>

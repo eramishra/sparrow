@@ -1,3 +1,5 @@
 node_modules/
 .env
 .vercel
+fitness-history.json
+plan.json

@@ -1,144 +1,158 @@
 /**
- * Vercel serverless webhook handler
- * Receives Telegram messages and responds via Claude
+ * Vercel serverless webhook handler — multi-user with onboarding state machine
  *
- * Supported messages:
- *   /update <text>  — appends text to context.md in the repo
- *   anything else   — answers the question using Claude + current plan + history
+ * Onboarding steps: awaiting_fitness_level → awaiting_strava → done
+ *
+ * Commands (active users):
+ *   /update <text>  — append to context notes
+ *   /plan           — show current week's plan
+ *   /connect        — reconnect Strava
+ *   anything else   — Q&A via Gemini
  */
 
-import { answerQuestion } from "../src/claude.js";
+import { getUserByChatId, upsertUser, appendContext, getLatestPlan, getActivitiesForUser, getLastActivityDate, saveActivities } from "../src/supabase.js";
+import { sendMessage } from "../src/telegram.js";
+import { answerQuestion } from "../src/gemini.js";
 import { getActivitiesSince } from "../src/strava.js";
 
-const REPO = process.env.GH_REPO; // e.g. "eramishra/workout-bot"
-const GH_API = "https://api.github.com";
-
-// ── GitHub helpers ────────────────────────────────────────────────────────────
-
-async function getRepoFile(path) {
-  const res = await fetch(`${GH_API}/repos/${REPO}/contents/${path}`, {
-    headers: {
-      Authorization: `Bearer ${process.env.GH_PAT}`,
-      Accept: "application/vnd.github.v3+json",
-    },
+function getStravaAuthUrl(chatId) {
+  const params = new URLSearchParams({
+    client_id: process.env.STRAVA_CLIENT_ID,
+    response_type: "code",
+    redirect_uri: `${process.env.APP_URL}/api/strava-callback`,
+    scope: "activity:read_all",
+    approval_prompt: "force",
+    state: String(chatId),
   });
-  if (res.status === 404) return { content: "", sha: null };
-  if (!res.ok) throw new Error(`GitHub GET ${path} failed: ${res.status}`);
-  const data = await res.json();
-  return {
-    content: Buffer.from(data.content, "base64").toString("utf8"),
-    sha: data.sha,
-  };
+  return `https://www.strava.com/oauth/authorize?${params}`;
 }
 
-async function putRepoFile(path, content, sha, message) {
-  const body = {
-    message,
-    content: Buffer.from(content).toString("base64"),
-  };
-  if (sha) body.sha = sha;
+async function handleOnboarding(user, chatId, text) {
+  if (user.onboarding_step === "awaiting_fitness_level") {
+    const isNew = /\b(a|new|beginner|start|just|never|0|1)\b/i.test(text);
+    const background = isNew ? "new_to_fitness" : "already_active";
+    await upsertUser(chatId, { fitness_background: background, onboarding_step: "awaiting_strava" });
+    const authUrl = getStravaAuthUrl(chatId);
+    await sendMessage(
+      chatId,
+      (isNew ? "Welcome! Starting fresh is exciting 💪\n\n" : "Great, let's import your training history!\n\n") +
+        `Connect your Strava account so I can track your activities:\n${authUrl}\n\n` +
+        "_Don't have Strava? Send /skip to continue without it._"
+    );
+    return;
+  }
 
-  const res = await fetch(`${GH_API}/repos/${REPO}/contents/${path}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${process.env.GH_PAT}`,
-      Accept: "application/vnd.github.v3+json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`GitHub PUT ${path} failed: ${res.status} ${await res.text()}`);
+  if (user.onboarding_step === "awaiting_strava") {
+    if (text === "/skip") {
+      await upsertUser(chatId, { onboarding_step: "done" });
+      await sendMessage(
+        chatId,
+        "No problem! I'll build you a plan based on your goals.\n\nUse `/update <goal>` to save your fitness goals, then ask me anything!"
+      );
+    } else {
+      const authUrl = getStravaAuthUrl(chatId);
+      await sendMessage(chatId, `Still waiting for Strava 🔗\n\n[Click here to connect](${authUrl})\n\n_Send /skip to continue without Strava._`);
+    }
+  }
 }
 
-// ── Telegram helper ───────────────────────────────────────────────────────────
+async function handleActiveUser(user, chatId, text) {
+  if (text.startsWith("/update ")) {
+    await appendContext(user.id, text.slice(8).trim());
+    await sendMessage(chatId, `Got it! Saved:\n_"${text.slice(8).trim()}"_\n\nThis will be factored into your next weekly plan.`);
+    return;
+  }
 
-async function sendTelegramMessage(text) {
-  await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: process.env.TELEGRAM_CHAT_ID,
-      text,
-      parse_mode: "Markdown",
-    }),
-  });
-}
+  if (text === "/plan") {
+    const plan = await getLatestPlan(user.id);
+    if (!plan) {
+      await sendMessage(chatId, "No plan yet! Your first plan will be generated this Sunday at 8 PM IST.");
+      return;
+    }
+    const summary = Object.entries(plan.plan).map(([day, d]) => `*${day}:* ${d.workout} (${d.duration})`).join("\n");
+    await sendMessage(chatId, `*Your Current Plan — week of ${plan.week_starting}*\n\n${summary}`);
+    return;
+  }
 
-// ── Handlers ──────────────────────────────────────────────────────────────────
+  if (text === "/connect") {
+    await sendMessage(chatId, `Connect your Strava account:\n${getStravaAuthUrl(chatId)}`);
+    return;
+  }
 
-async function handleUpdate(updateText) {
-  const { content, sha } = await getRepoFile("context.md");
-  const timestamp = new Date().toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", year: "numeric",
-  });
-  const newContent = content + `\n- [${timestamp}] ${updateText}`;
-  await putRepoFile("context.md", newContent.trim() + "\n", sha, `context: add update via Telegram`);
-  await sendTelegramMessage(`Got it! Saved:\n_"${updateText}"_\n\nThis will be factored into your next weekly plan.`);
-}
-
-async function handleQuestion(question) {
-  const [planFile, historyFile, contextFile] = await Promise.all([
-    getRepoFile("plan.json"),
-    getRepoFile("fitness-history.json"),
-    getRepoFile("context.md"),
+  // Q&A with live Strava fetch
+  const [plan, recentFromDb] = await Promise.all([
+    getLatestPlan(user.id),
+    getActivitiesForUser(user.id, new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString()),
   ]);
 
-  const plan = planFile.content ? JSON.parse(planFile.content) : null;
-  const history = historyFile.content ? JSON.parse(historyFile.content) : { activities: [] };
+  let recentActivities = recentFromDb;
 
-  // Fetch any new Strava activities since the last history entry for real-time context
-  const fetchSince = history.lastUpdated
-    ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const liveActivities = await getActivitiesSince(fetchSince);
+  if (user.strava_connected && user.strava_refresh_token) {
+    try {
+      const lastDate = await getLastActivityDate(user.id);
+      const since = lastDate ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { activities: liveActivities, refreshToken: newToken } = await getActivitiesSince(user.strava_refresh_token, since);
+      if (newToken !== user.strava_refresh_token) await upsertUser(chatId, { strava_refresh_token: newToken });
+      if (liveActivities.length > 0) {
+        await saveActivities(user.id, liveActivities);
+        recentActivities = await getActivitiesForUser(user.id, new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString());
+      }
+    } catch (err) {
+      if (err.message === "STRAVA_DEAUTHORIZED") {
+        await upsertUser(chatId, { strava_connected: false });
+        await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
+      }
+      console.error("Live Strava fetch failed:", err.message);
+    }
+  }
 
-  // Combine live activities with last 4 weeks of history for Q&A context
-  const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
-  const historySince4Weeks = history.activities.filter((a) => a.startDateIso >= fourWeeksAgo);
-  const existingIds = new Set(historySince4Weeks.map((a) => a.id));
-  const recentActivities = [
-    ...historySince4Weeks,
-    ...liveActivities.filter((a) => !existingIds.has(a.id)),
-  ];
-
-  const answer = await answerQuestion(question, plan, recentActivities, contextFile.content);
-  await sendTelegramMessage(answer);
+  const answer = await answerQuestion(text, plan, recentActivities, user.context_notes);
+  await sendMessage(chatId, answer);
 }
 
-// ── Main handler ──────────────────────────────────────────────────────────────
-
 export default async function handler(req, res) {
-  // Only accept POST
   if (req.method !== "POST") return res.status(405).end();
-
-  // Validate Telegram webhook secret
   const secret = req.headers["x-telegram-bot-api-secret-token"];
   if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) return res.status(403).end();
 
   try {
     const { message } = req.body;
+    if (!message?.text) return res.status(200).json({ ok: true });
 
-    if (message?.text && String(message.chat.id) === process.env.TELEGRAM_CHAT_ID) {
-      const text = message.text.trim();
+    const chatId = String(message.chat.id);
+    const text = message.text.trim();
+    let user = await getUserByChatId(chatId);
 
-      if (text.startsWith("/update ")) {
-        await handleUpdate(text.slice(8).trim());
-      } else if (text === "/start") {
-        await sendTelegramMessage(
-          "Hi! I'm your workout coach bot.\n\n" +
-          "• Ask me anything about your plan\n" +
-          "• Use `/update <text>` to save context (e.g. upcoming races, injuries)\n\n" +
-          "_Examples:_\n" +
-          "`/update I have a 10k race this Sunday`\n" +
-          "`Should I rest tomorrow?`"
-        );
+    if (!user) {
+      await upsertUser(chatId, { display_name: message.from?.first_name || "there", onboarding_step: "awaiting_fitness_level" });
+      await sendMessage(
+        chatId,
+        `Hi ${message.from?.first_name || "there"}! 🐦 Welcome to *Sparrow*, your AI fitness coach.\n\n` +
+          "Tell me about your fitness background:\n\n" +
+          "*A)* I'm new to fitness / just getting started\n" +
+          "*B)* I've been training for a while"
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (text === "/start") {
+      if (user.onboarding_step === "done") {
+        await sendMessage(chatId, `Welcome back! 🐦\n\n• Ask me anything about your training\n• /plan — current week's plan\n• /update <text> — save goals or events\n• /connect — reconnect Strava`);
       } else {
-        await handleQuestion(text);
+        await upsertUser(chatId, { onboarding_step: "awaiting_fitness_level" });
+        await sendMessage(chatId, `Let's get you set up! 🐦\n\n*A)* I'm new to fitness\n*B)* I've been training for a while`);
       }
+      return res.status(200).json({ ok: true });
+    }
+
+    if (user.onboarding_step !== "done") {
+      await handleOnboarding(user, chatId, text);
+    } else {
+      await handleActiveUser(user, chatId, text);
     }
   } catch (err) {
     console.error("Webhook error:", err);
   }
 
-  // Respond after all async work is done
   res.status(200).json({ ok: true });
 }

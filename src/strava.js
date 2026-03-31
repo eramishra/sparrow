@@ -1,48 +1,46 @@
 /**
- * Strava API client
- * Handles token refresh and fetching activities
+ * Strava API client — per-user token support
+ * All functions accept a refreshToken and return { activities, refreshToken } so callers can persist the rotated token
  */
 
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 const STRAVA_API_BASE = "https://www.strava.com/api/v3";
+const MAX_PAGES = 10;
 
-export async function getAccessToken() {
+export async function refreshStravaToken(refreshToken) {
   const res = await fetch(STRAVA_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       client_id: process.env.STRAVA_CLIENT_ID,
       client_secret: process.env.STRAVA_CLIENT_SECRET,
-      refresh_token: process.env.STRAVA_REFRESH_TOKEN,
+      refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
   });
 
   if (!res.ok) {
-    throw new Error(`Strava token refresh failed: ${res.status} ${await res.text()}`);
+    const body = await res.text();
+    if (res.status === 400 && body.includes("invalid")) throw new Error("STRAVA_DEAUTHORIZED");
+    throw new Error(`Strava token refresh failed: ${res.status} ${body}`);
   }
 
   const data = await res.json();
-  return data.access_token;
+  return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: data.expires_at };
 }
 
 async function fetchActivities(accessToken, after, before) {
   const activities = [];
   let page = 1;
 
-  while (true) {
+  while (page <= MAX_PAGES) {
     const res = await fetch(
       `${STRAVA_API_BASE}/athlete/activities?after=${after}&before=${before}&per_page=100&page=${page}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-
-    if (!res.ok) {
-      throw new Error(`Failed to fetch Strava activities: ${res.status} ${await res.text()}`);
-    }
-
+    if (!res.ok) throw new Error(`Failed to fetch Strava activities: ${res.status} ${await res.text()}`);
     const batch = await res.json();
     if (batch.length === 0) break;
-
     activities.push(...batch);
     page++;
   }
@@ -60,18 +58,18 @@ async function fetchActivities(accessToken, after, before) {
   }));
 }
 
-// Fetch activities since a given ISO date string (or daysBack as fallback)
-export async function getActivitiesSince(sinceIso) {
-  const accessToken = await getAccessToken();
+export async function getActivitiesSince(refreshToken, sinceIso) {
+  const tokens = await refreshStravaToken(refreshToken);
   const now = Math.floor(Date.now() / 1000);
   const after = Math.floor(new Date(sinceIso).getTime() / 1000);
-  return fetchActivities(accessToken, after, now);
+  const activities = await fetchActivities(tokens.accessToken, after, now);
+  return { activities, refreshToken: tokens.refreshToken };
 }
 
-// Used only by the bootstrap script
-export async function getActivities(daysBack = 90) {
-  const accessToken = await getAccessToken();
+export async function getActivities(refreshToken, daysBack = 90) {
+  const tokens = await refreshStravaToken(refreshToken);
   const now = Math.floor(Date.now() / 1000);
   const after = now - daysBack * 24 * 60 * 60;
-  return fetchActivities(accessToken, after, now);
+  const activities = await fetchActivities(tokens.accessToken, after, now);
+  return { activities, refreshToken: tokens.refreshToken };
 }

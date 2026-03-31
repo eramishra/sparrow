@@ -1,13 +1,10 @@
 {
   "name": "sparrow",
   "version": "1.0.0",
-  "description": "Daily workout reminder bot using Strava, OpenAI, and Telegram",
+  "description": "AI fitness coach — connects Strava, plans weekly workouts, sends daily Telegram reminders",
   "type": "module",
-  "scripts": {
-    "weekly-plan": "node src/weekly-plan.js",
-    "daily-reminder": "node src/daily-reminder.js"
-  },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0"
+    "@google/generative-ai": "^0.21.0",
+    "@supabase/supabase-js": "^2.47.0"
   }
 }

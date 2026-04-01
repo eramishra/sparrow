@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     const today = new Date();
     const monday = new Date(today);
     monday.setDate(today.getDate() + ((1 + 7 - today.getDay()) % 7 || 7));
-    await saveWeeklyPlan(updatedUser.id, monday.toISOString().split("T")[0], plan);
+    await saveWeeklyPlan(updatedUser.id, monday.toISOString().split("T")[0], plan.plan);
 
     const summary = Object.entries(plan.plan).map(([day, d]) => `*${day}:* ${d.workout} (${d.duration})`).join("\n");
     await sendMessage(chatId, `You're all set! 🎉 Here's your first weekly plan:\n\n${summary}\n\nYou'll get daily reminders at 8 PM IST and a fresh plan every Sunday.\n\nAsk me anything about your training anytime!`);

@@ -19,7 +19,14 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const users = await getAllActiveUsers();
+  let users;
+  try {
+    users = await getAllActiveUsers();
+  } catch (err) {
+    console.error("[daily-reminder] Failed to fetch users:", err.message, err.stack);
+    return res.status(500).json({ error: "Failed to fetch users", detail: err.message });
+  }
+  console.log(`[daily-reminder] Processing ${users.length} users`);
   const tomorrow = getTomorrowName();
   let success = 0, failed = 0;
 

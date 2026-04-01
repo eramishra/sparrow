@@ -41,7 +41,7 @@ export default async function handler(req, res) {
       const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
       const plan = await generateWeeklyPlan(recentActivities, history, user.context_notes, user.fitness_background, llmConfig);
 
-      await saveWeeklyPlan(user.id, weekStarting, plan);
+      await saveWeeklyPlan(user.id, weekStarting, plan.plan);
 
       const summary = Object.entries(plan.plan).map(([day, d]) => `*${day}:* ${d.workout} (${d.duration})`).join("\n");
       await sendMessage(user.telegram_chat_id, `*Your Workout Plan — Week of ${plan.weekStarting}*\n\n${summary}\n\n_Stay consistent and listen to your body!_`);

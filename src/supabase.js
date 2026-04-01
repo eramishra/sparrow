@@ -101,6 +101,7 @@ export async function appendContext(userId, text) {
 }
 
 export async function getAllActiveUsers() {
-  const { data } = await supabase.from("users").select("*").eq("onboarding_step", "done");
+  const { data, error } = await supabase.from("users").select("*").eq("onboarding_step", "done");
+  if (error) throw error;
   return data || [];
 }

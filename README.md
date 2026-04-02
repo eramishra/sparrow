@@ -14,6 +14,7 @@ Sparrow is an open-source AI fitness coach that lives in Telegram. It connects t
 - **Strava integration** — imports your activity history; fetches new activities on each Q&A
 - **Pluggable AI** — defaults to Gemini (free); switch to Claude or GPT-4o mini with your own API key
 - **Multi-user** — anyone with Telegram + Strava can use it
+- **Feedback** — built-in issue reporting and feature requests from the landing page
 
 ---
 
@@ -50,15 +51,10 @@ npm install
 
 ### 2. Set up Supabase
 
-In your Supabase project, open the **SQL Editor** and run:
+In your Supabase project, open the **SQL Editor** and run both files in order:
 
-```bash
-# Run supabase/schema.sql first, then the migration:
-supabase/schema.sql
-supabase/migrations/add_llm_preference.sql
-```
-
-Or paste both files manually into the Supabase SQL Editor.
+1. `supabase/schema.sql` — creates the three core tables
+2. `supabase/migrations/add_llm_preference.sql` — adds per-user AI model columns
 
 ### 3. Configure environment variables
 
@@ -79,6 +75,7 @@ cp .env.example .env.local
 | `SUPABASE_SERVICE_KEY` | Supabase `service_role` key (Settings → API) |
 | `APP_URL` | Your deployed Vercel URL, e.g. `https://your-project.vercel.app` |
 | `CRON_SECRET` | Any random string — used to secure cron endpoints |
+| `RESEND_API_KEY` | From [resend.com](https://resend.com) — used to send feedback emails |
 
 ### 4. Deploy to Vercel
 
@@ -147,22 +144,36 @@ Sparrow ships with Gemini as the default (free, no billing required). You can sw
 api/
   webhook.js          # Telegram webhook handler
   strava-callback.js  # Strava OAuth callback
+  feedback.js         # Feedback form email handler (Resend)
   cron/
     weekly-plan.js    # Sunday plan generation (cron)
     daily-reminder.js # Nightly reminders (cron)
 src/
   ai.js               # AI router (Gemini / Claude / OpenAI)
   prompts.js          # Shared prompt builders
-  gemini.js           # Gemini provider
   strava.js           # Strava API client
   supabase.js         # Supabase DB helpers
   telegram.js         # Telegram Bot API client
 supabase/
   schema.sql          # Initial database schema
   migrations/         # Schema migrations
+scripts/
+  test-cli.mjs        # Interactive terminal for testing AI responses
 public/
   index.html          # Landing page
 ```
+
+---
+
+## Local testing
+
+A terminal REPL is included for testing AI responses without going through Telegram:
+
+```bash
+node scripts/test-cli.mjs
+```
+
+Loads your real Supabase data (user profile, plan, recent activities) and lets you ask questions, switch AI models, and override context — all from the terminal.
 
 ---
 

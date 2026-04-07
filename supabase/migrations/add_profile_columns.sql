@@ -1,0 +1,8 @@
+-- Add profile columns collected during onboarding and from Strava
+ALTER TABLE users ADD COLUMN IF NOT EXISTS fitness_level TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS fitness_goal TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS days_per_week INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS age INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS height_cm INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS weight_kg NUMERIC(5,1);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT;

@@ -6,6 +6,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@google/generative-ai": "^0.21.0",
-    "@supabase/supabase-js": "^2.47.0"
+    "@supabase/supabase-js": "^2.47.0",
+    "@vercel/og": "^0.11.1",
+    "react": "^19.2.4"
   }
 }

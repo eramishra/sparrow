@@ -12,6 +12,11 @@ CREATE TABLE users (
   strava_access_token TEXT,
   strava_expires_at BIGINT,
   context_notes TEXT NOT NULL DEFAULT '',
+  preferred_llm TEXT,
+  llm_api_key TEXT,
+  fitness_level TEXT,
+  fitness_goal TEXT,
+  days_per_week INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

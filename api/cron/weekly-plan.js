@@ -5,8 +5,9 @@
 
 import { getAllActiveUsers, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan, upsertUser } from "../../src/supabase.js";
 import { getActivitiesSince } from "../../src/strava.js";
-import { generateWeeklyPlan } from "../../src/ai.js";
+import { answerQuestion } from "../../src/ai.js";
 import { sendMessage } from "../../src/telegram.js";
+import { generateAndSavePlan } from "../../src/plan.js";
 
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -18,33 +19,34 @@ export default async function handler(req, res) {
 
   const today = new Date();
   const monday = new Date(today);
-  monday.setDate(today.getDate() + 1);
-  const weekStarting = monday.toISOString().split("T")[0];
+  const daysUntilMonday = today.getDay() === 0 ? 1 : 8 - today.getDay();
+  monday.setDate(today.getDate() + daysUntilMonday);
 
   let success = 0, failed = 0;
 
   for (const user of users) {
     try {
-      let recentActivities = [];
-
+      // Sync Strava activities first
       if (user.strava_connected && user.strava_refresh_token) {
         const lastDate = await getLastActivityDate(user.id);
         const since = lastDate ?? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
         const { activities, refreshToken: newToken } = await getActivitiesSince(user.strava_refresh_token, since);
         if (newToken !== user.strava_refresh_token) await upsertUser(user.telegram_chat_id, { strava_refresh_token: newToken });
         await saveActivities(user.id, activities);
-        recentActivities = activities;
       }
 
-      const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
-      const history = await getActivitiesForUser(user.id, sixMonthsAgo);
-      const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
-      const plan = await generateWeeklyPlan(recentActivities, history, user.context_notes, user.fitness_background, llmConfig);
+      const { plan, llmConfig, recent } = await generateAndSavePlan(user, monday);
 
-      await saveWeeklyPlan(user.id, weekStarting, plan.plan);
-
-      const summary = Object.entries(plan.plan).map(([day, d]) => `*${day}:* ${d.workout} (${d.duration})`).join("\n");
-      await sendMessage(user.telegram_chat_id, `*Your Workout Plan — Week of ${plan.weekStarting}*\n\n${summary}\n\n_Stay consistent and listen to your body!_`);
+      const userProfile = { fitnessLevel: user.fitness_level, fitnessGoal: user.fitness_goal, daysPerWeek: user.days_per_week, gender: user.gender, weightKg: user.weight_kg, age: user.age, heightCm: user.height_cm };
+      const message = await answerQuestion(
+        "Write out my complete workout plan for next week in full detail.",
+        plan,
+        recent,
+        user.context_notes,
+        llmConfig,
+        userProfile
+      );
+      await sendMessage(user.telegram_chat_id, `*Your Workout Plan — Week of ${plan.weekStarting}*\n\n${message}`);
 
       success++;
       console.log(`Plan generated for ${user.telegram_chat_id}`);

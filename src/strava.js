@@ -66,6 +66,25 @@ export async function getActivitiesSince(refreshToken, sinceIso) {
   return { activities, refreshToken: tokens.refreshToken };
 }
 
+export async function getActivityById(accessToken, activityId) {
+  const res = await fetch(`${STRAVA_API_BASE}/activities/${activityId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch Strava activity ${activityId}: ${res.status} ${await res.text()}`);
+  const a = await res.json();
+  return {
+    id: a.id,
+    name: a.name,
+    type: a.type,
+    date: new Date(a.start_date).toDateString(),
+    startDateIso: new Date(a.start_date).toISOString(),
+    distanceKm: (a.distance / 1000).toFixed(2),
+    durationMin: Math.round(a.moving_time / 60),
+    avgHeartRate: a.average_heartrate ?? null,
+    elevationGain: a.total_elevation_gain ?? 0,
+  };
+}
+
 export async function getActivities(refreshToken, daysBack = 90) {
   const tokens = await refreshStravaToken(refreshToken);
   const now = Math.floor(Date.now() / 1000);

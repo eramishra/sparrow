@@ -100,6 +100,15 @@ export async function appendContext(userId, text) {
   await supabase.from("users").update({ context_notes: updated, updated_at: new Date().toISOString() }).eq("id", userId);
 }
 
+export async function getUserByStravaAthleteId(athleteId) {
+  const { data } = await supabase
+    .from("users")
+    .select("*")
+    .eq("strava_athlete_id", String(athleteId))
+    .maybeSingle();
+  return data;
+}
+
 export async function getAllActiveUsers() {
   const { data, error } = await supabase.from("users").select("*").eq("onboarding_step", "done");
   if (error) throw error;

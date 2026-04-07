@@ -35,13 +35,16 @@ export default async function handler(req, res) {
     const user = await getUserByChatId(chatId);
     if (!user) throw new Error(`User not found for chat_id ${chatId}`);
 
+    const athlete = tokens.athlete || {};
     const updatedUser = await upsertUser(chatId, {
       strava_refresh_token: tokens.refresh_token,
       strava_access_token: tokens.access_token,
       strava_expires_at: tokens.expires_at,
-      strava_athlete_id: String(tokens.athlete?.id || ""),
+      strava_athlete_id: String(athlete.id || ""),
       strava_connected: true,
       onboarding_step: "done",
+      gender: athlete.sex === "M" ? "male" : athlete.sex === "F" ? "female" : null,
+      weight_kg: athlete.weight || null,
     });
 
     await sendMessage(chatId, "Strava connected! ✅ Fetching your activity history...");
@@ -57,7 +60,8 @@ export default async function handler(req, res) {
     ]);
 
     const llmConfig = { provider: updatedUser.preferred_llm || "gemini", apiKey: updatedUser.llm_api_key };
-    const plan = await generateWeeklyPlan(recent, history, updatedUser.context_notes || "", updatedUser.fitness_background, llmConfig);
+    const userProfile = { fitnessLevel: updatedUser.fitness_level, fitnessGoal: updatedUser.fitness_goal, daysPerWeek: updatedUser.days_per_week, gender: updatedUser.gender, weightKg: updatedUser.weight_kg, age: updatedUser.age, heightCm: updatedUser.height_cm };
+    const plan = await generateWeeklyPlan(recent, history, updatedUser.context_notes || "", updatedUser.fitness_background, llmConfig, null, userProfile);
 
     const today = new Date();
     const monday = new Date(today);
@@ -67,7 +71,7 @@ export default async function handler(req, res) {
     const summary = Object.entries(plan.plan).map(([day, d]) => `*${day}:* ${d.workout} (${d.duration})`).join("\n");
     await sendMessage(chatId, `You're all set! 🎉 Here's your first weekly plan:\n\n${summary}\n\nYou'll get daily reminders at 8 PM IST and a fresh plan every Sunday.\n\nAsk me anything about your training anytime!`);
 
-    res.status(200).send(`<html><body style="font-family:sans-serif;text-align:center;padding:40px;max-width:400px;margin:auto"><h2>✅ Strava Connected!</h2><p>Your activity history has been imported and your first workout plan is ready.</p><p>Return to Telegram to see your plan!</p></body></html>`);
+    res.status(200).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Strava Connected</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0d0d0d;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:32px}.card{max-width:360px}.icon{font-size:56px;margin-bottom:20px}.title{font-size:24px;font-weight:700;margin-bottom:10px}.sub{font-size:15px;color:#888;line-height:1.5;margin-bottom:24px}.note{font-size:13px;color:#555}</style></head><body><div class="card"><div class="icon">✅</div><div class="title">Strava Connected!</div><div class="sub">Your activity history has been imported.<br/>Your first plan is ready in Telegram.</div><div class="note" id="msg">Closing automatically...</div></div><script>setTimeout(function(){window.close();},2000);setTimeout(function(){var el=document.getElementById('msg');if(el)el.textContent='You can close this tab.';},3000);</script></body></html>`);
   } catch (err) {
     console.error("[strava-callback] ERROR for chat_id=%s: %s\n%s", chatId, err.message, err.stack);
     if (chatId) await sendMessage(chatId, "Something went wrong. Please type /connect to try again.").catch((e) => console.error("[strava-callback] Failed to send error message:", e.message));

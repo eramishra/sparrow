@@ -2,16 +2,20 @@
 
 Sparrow is an open-source AI fitness coach that lives in Telegram. It connects to your Strava account, builds a personalised weekly workout plan based on your training history, sends nightly reminders, and answers your fitness questions in real time.
 
-**[sparrow-eramishras-projects.vercel.app](https://sparrow-eramishras-projects.vercel.app)** · **[@isparo_bot](https://t.me/isparo_bot)**
+**[talktosparrow.vercel.app](https://talktosparrow.vercel.app)** · **[@isparo_bot](https://t.me/isparo_bot)**
 
 ---
 
 ## Features
 
 - **Weekly workout plans** — generated every Sunday at 8 PM IST based on your last 6 months of Strava data
+- **Post-activity coaching** — after every completed workout, Sparrow sends a personalised coaching message comparing actual vs planned
 - **Daily reminders** — every evening at 8 PM IST with tomorrow's session
 - **Two-way coaching** — ask anything about your training, recovery, or goals
-- **Strava integration** — imports your activity history; fetches new activities on each Q&A
+- **Strava integration** — real-time webhook syncs activities; fetches live data on Q&A
+- **Smart plan management** — `/checkplan` detects drift between planned and actual workouts and regenerates only when needed
+- **Exercise guide** — `/howto` gives form cues, coaching tips, and a YouTube link for any exercise
+- **Guided onboarding** — collects fitness level, goals, days/week, limitations, and upcoming events via inline buttons
 - **Pluggable AI** — defaults to Gemini (free); switch to Claude or GPT-4o mini with your own API key
 - **Multi-user** — anyone with Telegram + Strava can use it
 - **Feedback** — built-in issue reporting and feature requests from the landing page
@@ -73,7 +77,7 @@ cp .env.example .env.local
 | `GEMINI_API_KEY` | From [aistudio.google.com](https://aistudio.google.com) |
 | `SUPABASE_URL` | Your Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase `service_role` key (Settings → API) |
-| `APP_URL` | Your deployed Vercel URL, e.g. `https://your-project.vercel.app` |
+| `APP_URL` | Your deployed Vercel URL, e.g. `https://talktosparrow.vercel.app` |
 | `CRON_SECRET` | Any random string — used to secure cron endpoints |
 | `RESEND_API_KEY` | From [resend.com](https://resend.com) — used to send feedback emails |
 
@@ -101,16 +105,35 @@ In [strava.com/settings/api](https://www.strava.com/settings/api), set the **Aut
 
 ## Bot commands
 
+**Plans**
 | Command | Description |
 |---|---|
-| `/start` | Begin onboarding or see a welcome-back summary |
 | `/plan` | View this week's workout plan |
-| `/update <text>` | Save a goal, event, or note for your next plan |
+| `/newplan` | Generate a fresh plan starting from today |
+| `/checkplan` | Check if your week has drifted; regenerates only if 2+ days diverged |
+
+**Profile**
+| Command | Description |
+|---|---|
+| `/profile` | View your fitness level, goals, training days, and saved context |
+| `/update profile` | Update fitness level, goals, days/week, limitations, and targets |
+
+**Exercise Guide**
+| Command | Description |
+|---|---|
+| `/howto <exercise>` | Form cues, coaching tips, and a YouTube link for any exercise |
+
+**Settings**
+| Command | Description |
+|---|---|
 | `/connect` | Connect or reconnect your Strava account |
 | `/llm` | Check which AI model is active |
 | `/llm gemini` | Switch to Gemini 2.5 Flash (free, default) |
 | `/llm claude <api_key>` | Switch to Claude Haiku |
 | `/llm openai <api_key>` | Switch to GPT-4o mini |
+| `/reset` | Clear your profile and restart onboarding |
+| `/start` | Begin onboarding or see a welcome-back summary |
+| `/help` | List all commands inside Telegram |
 
 Any other message is sent to your AI coach as a question.
 
@@ -142,7 +165,8 @@ Sparrow ships with Gemini as the default (free, no billing required). You can sw
 
 ```
 api/
-  webhook.js          # Telegram webhook handler
+  webhook.js          # Telegram webhook handler (commands + onboarding + Q&A)
+  strava-webhook.js   # Strava real-time activity events + post-activity coaching
   strava-callback.js  # Strava OAuth callback
   feedback.js         # Feedback form email handler (Resend)
   cron/
@@ -150,15 +174,17 @@ api/
     daily-reminder.js # Nightly reminders (cron)
 src/
   ai.js               # AI router (Gemini / Claude / OpenAI)
+  plan.js             # Plan generation, divergence detection, activity matching
   prompts.js          # Shared prompt builders
   strava.js           # Strava API client
   supabase.js         # Supabase DB helpers
   telegram.js         # Telegram Bot API client
 supabase/
-  schema.sql          # Initial database schema
+  schema.sql          # Database schema
   migrations/         # Schema migrations
 scripts/
   test-cli.mjs        # Interactive terminal for testing AI responses
+  register-strava-webhook.mjs  # One-time Strava webhook registration
 public/
   index.html          # Landing page
 ```

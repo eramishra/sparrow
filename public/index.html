@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sparrow — AI Fitness Coach</title>
   <meta name="description" content="Sparrow is your personal AI fitness coach on Telegram. Connects to Strava, builds weekly workout plans, and answers your training questions." />
+  <link rel="canonical" href="https://talktosparrow.vercel.app" />
+  <link rel="icon" type="image/svg+xml" href="/sparrow-logo.svg" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://talktosparrow.vercel.app" />
+  <meta property="og:title" content="Sparrow — AI Fitness Coach on Telegram" />
+  <meta property="og:description" content="Connects to Strava, builds a personalised weekly plan, and coaches you after every workout. Free to use." />
+  <meta property="og:image" content="https://talktosparrow.vercel.app/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Sparrow — AI Fitness Coach on Telegram" />
+  <meta name="twitter:description" content="Connects to Strava, builds a personalised weekly plan, and coaches you after every workout." />
+  <meta name="twitter:image" content="https://talktosparrow.vercel.app/og-image.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -44,7 +61,7 @@
       border-bottom: 1px solid var(--border);
     }
     .nav-logo { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; }
-    .nav-logo span { font-size: 22px; }
+    .nav-logo img { width: 28px; height: 28px; }
     .nav-links { display: flex; gap: 28px; font-size: 14px; color: var(--muted); }
     .nav-links a:hover { color: var(--text); }
     .nav-cta {
@@ -253,7 +270,7 @@
 
 <!-- Nav -->
 <nav>
-  <div class="nav-logo"><span>🐦</span> Sparrow</div>
+  <div class="nav-logo"><img src="/sparrow-logo-clean.svg" alt="Sparrow" /> Sparrow</div>
   <div class="nav-links">
     <a href="#how-it-works">How it works</a>
     <a href="#commands">Commands</a>
@@ -265,7 +282,10 @@
 
 <!-- Hero -->
 <div class="hero">
-  <div class="hero-badge">🏃 Powered by Strava + AI</div>
+  <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:28px;">
+    <img src="/sparrow-logo-clean.svg" alt="Sparrow" style="width:64px;height:64px;filter:drop-shadow(0 4px 20px rgba(207,207,206,.2));" />
+    <div class="hero-badge" style="margin-bottom:0;">🏃 Powered by Strava + AI</div>
+  </div>
   <h1>Your personal<br /><em>AI fitness coach</em><br />on Telegram</h1>
   <p>Sparrow connects to your Strava, builds a weekly workout plan tailored to your training history, and answers your fitness questions — all inside Telegram.</p>
   <div class="hero-actions">
@@ -319,25 +339,45 @@
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td><span class="cmd">/start</span></td>
-        <td class="cmd-desc">Begin onboarding or get a welcome-back summary with all available commands.</td>
-      </tr>
+      <!-- Plans -->
+      <tr><td colspan="2" style="padding: 10px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted);">Plans</td></tr>
       <tr>
         <td><span class="cmd">/plan</span></td>
         <td class="cmd-desc">Show your current week's workout plan with each day's session, duration, and coaching notes.</td>
       </tr>
       <tr>
-        <td><span class="cmd">/update &lt;text&gt;</span></td>
-        <td class="cmd-desc">Save a note about your goals, an upcoming race, or anything that should influence your next plan. Example: <code>/update Marathon on April 20, need to peak this week</code></td>
+        <td><span class="cmd">/newplan</span></td>
+        <td class="cmd-desc">Generate a fresh plan starting from today, syncing your latest Strava activities first.</td>
       </tr>
       <tr>
+        <td><span class="cmd">/checkplan</span></td>
+        <td class="cmd-desc">Compare this week's planned workouts against what you actually did. Regenerates the plan only if there's significant divergence (2+ missed or mismatched days).</td>
+      </tr>
+      <!-- Exercise guide -->
+      <tr><td colspan="2" style="padding: 16px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted);">Exercise Guide</td></tr>
+      <tr>
+        <td><span class="cmd">/howto &lt;exercise&gt;</span></td>
+        <td class="cmd-desc">Get a concise form guide for any exercise — setup, key cues, and common mistakes — plus a YouTube link. Example: <code>/howto Romanian deadlift</code></td>
+      </tr>
+      <!-- Profile -->
+      <tr><td colspan="2" style="padding: 16px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted);">Profile</td></tr>
+      <tr>
+        <td><span class="cmd">/profile</span></td>
+        <td class="cmd-desc">View your fitness level, goals, training days, and saved context notes.</td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/update profile</span></td>
+        <td class="cmd-desc">Update your fitness level, goals, days/week, limitations, and targets. Fresh input replaces the old values.</td>
+      </tr>
+      <!-- Settings -->
+      <tr><td colspan="2" style="padding: 16px 16px 4px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted);">Settings</td></tr>
+      <tr>
         <td><span class="cmd">/connect</span></td>
-        <td class="cmd-desc">Connect or reconnect your Strava account. Use this if you skipped Strava during onboarding or your connection expired.</td>
+        <td class="cmd-desc">Connect or reconnect your Strava account. Use this if you skipped Strava during onboarding or your connection has expired.</td>
       </tr>
       <tr>
         <td><span class="cmd">/llm</span></td>
-        <td class="cmd-desc">Check which AI model is powering your coach. <span class="tag tag-new">New</span></td>
+        <td class="cmd-desc">Check which AI model is powering your coach.</td>
       </tr>
       <tr>
         <td><span class="cmd">/llm gemini</span></td>
@@ -345,14 +385,26 @@
       </tr>
       <tr>
         <td><span class="cmd">/llm claude &lt;api_key&gt;</span></td>
-        <td class="cmd-desc">Switch to Claude Haiku (Anthropic). Requires your own Anthropic API key. See the <a href="#models" style="color:var(--accent2)">Models</a> section for setup instructions.</td>
+        <td class="cmd-desc">Switch to Claude Haiku (Anthropic). Requires your own Anthropic API key. See the <a href="#models" style="color:var(--accent2)">Models</a> section.</td>
       </tr>
       <tr>
         <td><span class="cmd">/llm openai &lt;api_key&gt;</span></td>
-        <td class="cmd-desc">Switch to GPT-4o mini (OpenAI). Requires your own OpenAI API key. See the <a href="#models" style="color:var(--accent2)">Models</a> section for setup instructions.</td>
+        <td class="cmd-desc">Switch to GPT-4o mini (OpenAI). Requires your own OpenAI API key. See the <a href="#models" style="color:var(--accent2)">Models</a> section.</td>
       </tr>
       <tr>
-        <td colspan="2" style="padding: 10px 16px; color: var(--muted); font-size: 13px; font-style: italic;">
+        <td><span class="cmd">/reset</span></td>
+        <td class="cmd-desc">Clear your profile and restart onboarding from scratch. Useful if your fitness level or goals have changed significantly.</td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/start</span></td>
+        <td class="cmd-desc">Begin onboarding (new users) or get a welcome-back summary with all commands (existing users).</td>
+      </tr>
+      <tr>
+        <td><span class="cmd">/help</span></td>
+        <td class="cmd-desc">Show all available commands inside Telegram.</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="padding: 14px 16px; color: var(--muted); font-size: 13px; font-style: italic;">
           Anything else you type is treated as a question to your AI coach — ask about your training load, recovery, technique, nutrition, or anything fitness related.
         </td>
       </tr>
@@ -462,7 +514,7 @@
 
 <!-- Footer -->
 <footer>
-  <p style="font-size:22px;margin-bottom:8px">🐦</p>
+  <img src="/sparrow-logo-clean.svg" alt="Sparrow" style="width:40px;height:40px;margin-bottom:12px;" />
   <p><strong>Sparrow</strong> — open source AI fitness coach</p>
   <p style="margin-top:8px">
     <a href="https://t.me/isparo_bot" target="_blank">Telegram</a> ·

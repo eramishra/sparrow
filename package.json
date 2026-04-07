@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "AI fitness coach — connects Strava, plans weekly workouts, sends daily Telegram reminders",
   "type": "module",
+  "scripts": {
+    "deploy": "url=$(vercel deploy --prod | grep -o 'https://[^ ]*\\.vercel\\.app' | tail -1) && echo \"Deployed: $url\" && vercel alias set $url talktosparrow.vercel.app"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@google/generative-ai": "^0.21.0",

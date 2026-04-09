@@ -243,7 +243,7 @@ export async function handleOnboarding(user, chatId, text) {
       await sendMessage(chatId, `Profile updated! ✅\n\nUse /newplan to generate a fresh plan with your updated profile.`);
     } else {
       await upsertUser(chatId, { onboarding_step: "awaiting_strava" });
-      if (process.env.STRAVA_APP_PENDING === "true") {
+      if (process.env.STRAVA_APP_PENDING?.trim() === "true") {
         await upsertUser(chatId, { strava_pending_reconnect: true });
         await sendMessage(chatId,
           `Almost done! 🐦\n\n` +
@@ -273,7 +273,7 @@ export async function handleOnboarding(user, chatId, text) {
       await sendMessage(chatId,
         `You're all set! 🐦\n\nSend /newplan to generate your first training plan.\n\n_You can connect Strava anytime with /connect_`
       );
-    } else if (process.env.STRAVA_APP_PENDING === "true") {
+    } else if (process.env.STRAVA_APP_PENDING?.trim() === "true") {
       await upsertUser(chatId, { strava_pending_reconnect: true });
       await sendMessage(chatId, `Strava connection is temporarily unavailable — the app is pending Strava's approval. We'll notify you as soon as it's open!\n\n_Send /skip to continue without Strava for now._`);
     } else {
@@ -484,7 +484,7 @@ export async function handleActiveUser(user, chatId, text) {
   }
 
   if (text === "/connect") {
-    if (process.env.STRAVA_APP_PENDING === "true" && !user.strava_connected) {
+    if (process.env.STRAVA_APP_PENDING?.trim() === "true" && !user.strava_connected) {
       await upsertUser(chatId, { strava_pending_reconnect: true });
       await sendMessage(chatId, "Strava connection is temporarily unavailable — the app is pending Strava's approval for multiple users. We'll notify you as soon as it's open. Sorry for the wait!");
       return;

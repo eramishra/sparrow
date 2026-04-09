@@ -9,7 +9,6 @@ import { getUserByStravaAthleteId, upsertUser, saveActivities, getLatestPlan } f
 import { refreshStravaToken, getActivityById } from "../src/strava.js";
 import { sendMessage } from "../src/telegram.js";
 import { generateActivityFeedback } from "../src/ai.js";
-import { activityMatchesPlan } from "../src/plan.js";
 
 export default async function handler(req, res) {
   // ── Subscription verification (GET) ───────────────────────────────────────
@@ -62,12 +61,6 @@ export default async function handler(req, res) {
       const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
       const activityDayName = DAY_NAMES[new Date(activity.startDateIso).getDay()];
       const plannedDay = plan?.plan?.[activityDayName] ?? null;
-
-      // Only send feedback if this activity matches what was planned — stay silent otherwise
-      if (!activityMatchesPlan(activity, plannedDay)) {
-        console.log(`[strava-webhook] Activity ${activityId} does not match plan for ${activityDayName} — skipping feedback`);
-        return;
-      }
 
       const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
       const feedback = await generateActivityFeedback(activity, plannedDay, llmConfig);

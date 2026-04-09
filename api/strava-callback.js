@@ -29,8 +29,8 @@ export default async function handler(req, res) {
       }),
     });
 
-    const tokens = await tokenRes.json();
     if (!tokenRes.ok) {
+      console.warn(`[strava-callback] Token exchange failed: status=${tokenRes.status} chat_id=${chatId}`);
       if (tokenRes.status === 403) {
         if (chatId) {
           await upsertUser(chatId, { strava_pending_reconnect: true }).catch(() => {});
@@ -38,8 +38,10 @@ export default async function handler(req, res) {
         }
         return res.status(200).send("<html><body style='font-family:sans-serif;text-align:center;padding:40px'><h2>Strava connection unavailable.</h2><p>The app is pending Strava approval for multiple users. Return to Telegram — we'll notify you once it's open.</p></body></html>");
       }
-      throw new Error(`Token exchange failed: ${JSON.stringify(tokens)}`);
+      const errBody = await tokenRes.text().catch(() => "");
+      throw new Error(`Token exchange failed: ${tokenRes.status} ${errBody}`);
     }
+    const tokens = await tokenRes.json();
 
     const user = await getUserByChatId(chatId);
     if (!user) throw new Error(`User not found for chat_id ${chatId}`);

@@ -40,8 +40,17 @@ export default async function handler(req, res) {
         return;
       }
 
-      const tokens = await refreshStravaToken(user.strava_refresh_token);
-      if (tokens.refreshToken !== user.strava_refresh_token) {
+      let tokens;
+      try {
+        tokens = await refreshStravaToken(user.strava_refresh_token);
+      } catch (err) {
+        if (err.message === "STRAVA_APP_NOT_APPROVED") {
+          console.warn(`[strava-webhook] App not yet approved by Strava — skipping activity ${activityId} for athlete_id=${stravaAthleteId}`);
+          return;
+        }
+        throw err;
+      }
+      if (tokens.refreshToken && tokens.refreshToken !== user.strava_refresh_token) {
         await upsertUser(user.telegram_chat_id, { strava_refresh_token: tokens.refreshToken });
       }
 

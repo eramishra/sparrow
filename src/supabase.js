@@ -111,6 +111,15 @@ export async function getUserByStravaAthleteId(athleteId) {
   return data;
 }
 
+export async function getUsersPendingStravaReconnect() {
+  const { data, error } = await supabase
+    .from("users")
+    .select("telegram_chat_id, first_name")
+    .eq("strava_pending_reconnect", true);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function getAllActiveUsers() {
   const { data, error } = await supabase.from("users").select("*").eq("onboarding_step", "done");
   if (error) throw error;

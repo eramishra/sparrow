@@ -341,7 +341,11 @@ export async function handleActiveUser(user, chatId, text) {
       return;
     }
     const DAY_ORDER = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-    const summary = DAY_ORDER.filter(d => plan.plan[d]).map(d => `*${d}:* ${plan.plan[d].workout} (${plan.plan[d].duration})`).join("\n");
+    const summary = DAY_ORDER.filter(d => plan.plan[d]).map(d => {
+      const day = plan.plan[d];
+      const notes = day.notes ? `\n  _${day.notes}_` : "";
+      return `*${d}:* ${day.workout} (${day.duration})${notes}`;
+    }).join("\n");
     await sendMessage(chatId, `*Your Current Plan — week of ${plan.week_starting}*\n\n${summary}`);
     return;
   }

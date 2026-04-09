@@ -22,6 +22,7 @@ export async function refreshStravaToken(refreshToken) {
   if (!res.ok) {
     const body = await res.text();
     if (res.status === 400 && body.includes("invalid")) throw new Error("STRAVA_DEAUTHORIZED");
+    if (res.status === 403) throw new Error("STRAVA_APP_NOT_APPROVED");
     throw new Error(`Strava token refresh failed: ${res.status} ${body}`);
   }
 

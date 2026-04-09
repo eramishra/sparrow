@@ -83,10 +83,12 @@ export async function saveWeeklyPlan(userId, weekStarting, plan) {
 }
 
 export async function getLatestPlan(userId) {
+  const today = new Date().toISOString().slice(0, 10);
   const { data } = await supabase
     .from("weekly_plans")
     .select("*")
     .eq("user_id", userId)
+    .lte("week_starting", today)
     .order("week_starting", { ascending: false })
     .limit(1)
     .maybeSingle();

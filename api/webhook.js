@@ -243,17 +243,26 @@ export async function handleOnboarding(user, chatId, text) {
       await sendMessage(chatId, `Profile updated! ✅\n\nUse /newplan to generate a fresh plan with your updated profile.`);
     } else {
       await upsertUser(chatId, { onboarding_step: "awaiting_strava" });
-      const authUrl = getStravaAuthUrl(chatId);
-      await sendMessage(chatId,
-        `Almost done! 🐦\n\n` +
-        `*Connect Strava to unlock the full power of Sparrow:*\n\n` +
-        `• Every workout syncs automatically after you complete it\n` +
-        `• Your plans adapt based on what you *actually* did, not just what was planned\n` +
-        `• Without Strava, Sparrow has no way to know your real training load\n\n` +
-        `Strava is *free* on the basic plan — no subscription needed.\n\n` +
-        `[Connect Strava →](${authUrl})\n\n` +
-        `_Send /skip to continue without Strava. Plan quality will be limited._`
-      );
+      if (process.env.STRAVA_APP_PENDING === "true") {
+        await upsertUser(chatId, { strava_pending_reconnect: true });
+        await sendMessage(chatId,
+          `Almost done! 🐦\n\n` +
+          `Strava connection is temporarily unavailable — the app is pending Strava's approval for multiple users. We'll notify you as soon as it's open!\n\n` +
+          `_Send /skip to continue without Strava for now. You'll be notified when Strava is ready._`
+        );
+      } else {
+        const authUrl = getStravaAuthUrl(chatId);
+        await sendMessage(chatId,
+          `Almost done! 🐦\n\n` +
+          `*Connect Strava to unlock the full power of Sparrow:*\n\n` +
+          `• Every workout syncs automatically after you complete it\n` +
+          `• Your plans adapt based on what you *actually* did, not just what was planned\n` +
+          `• Without Strava, Sparrow has no way to know your real training load\n\n` +
+          `Strava is *free* on the basic plan — no subscription needed.\n\n` +
+          `[Connect Strava →](${authUrl})\n\n` +
+          `_Send /skip to continue without Strava. Plan quality will be limited._`
+        );
+      }
     }
     return;
   }
@@ -264,6 +273,9 @@ export async function handleOnboarding(user, chatId, text) {
       await sendMessage(chatId,
         `You're all set! 🐦\n\nSend /newplan to generate your first training plan.\n\n_You can connect Strava anytime with /connect_`
       );
+    } else if (process.env.STRAVA_APP_PENDING === "true") {
+      await upsertUser(chatId, { strava_pending_reconnect: true });
+      await sendMessage(chatId, `Strava connection is temporarily unavailable — the app is pending Strava's approval. We'll notify you as soon as it's open!\n\n_Send /skip to continue without Strava for now._`);
     } else {
       const authUrl = getStravaAuthUrl(chatId);
       await sendMessage(chatId, `Still waiting for Strava 🔗\n\n[Click here to connect](${authUrl})\n\n_Send /skip to continue without Strava._`);

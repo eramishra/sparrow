@@ -22,6 +22,14 @@ import { answerQuestion, generateWeeklyPlan, explainExercise, generateActivityFe
 import { getActivitiesSince } from "../src/strava.js";
 import { generateAndSavePlan, checkWeekDivergence } from "../src/plan.js";
 
+// ── LLM error classifier ─────────────────────────────────────────────────────
+
+function isLlmOverloaded(err) {
+  return err.message?.includes("503") || err.message?.includes("overloaded") || err.message?.includes("high demand") || err.message?.includes("rate limit") || err.message?.toLowerCase().includes("too many requests");
+}
+
+const LLM_BUSY_MSG = "My AI brain is a bit overwhelmed right now — please try again in a minute. 🧠";
+
 // ── Onboarding keyboard helpers ─────────────────────────────────────────────
 
 const FITNESS_LEVEL_KEYBOARD = [
@@ -299,9 +307,13 @@ export async function handleActiveUser(user, chatId, text) {
       return;
     }
     const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
-    const explanation = await explainExercise(exercise, llmConfig);
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(exercise + " proper form")}`;
-    await sendMessage(chatId, `${explanation}\n\n🎥 [Watch on YouTube](${searchUrl})`);
+    try {
+      const explanation = await explainExercise(exercise, llmConfig);
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(exercise + " proper form")}`;
+      await sendMessage(chatId, `${explanation}\n\n🎥 [Watch on YouTube](${searchUrl})`);
+    } catch (err) {
+      await sendMessage(chatId, isLlmOverloaded(err) ? LLM_BUSY_MSG : "Couldn't look that up. Try again in a moment.");
+    }
     return;
   }
 
@@ -450,8 +462,10 @@ export async function handleActiveUser(user, chatId, text) {
       if (err.message === "STRAVA_DEAUTHORIZED") {
         await upsertUser(chatId, { strava_connected: false });
         await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
+      } else if (isLlmOverloaded(err)) {
+        await sendMessage(chatId, LLM_BUSY_MSG);
       } else {
-        await sendMessage(chatId, `Couldn't fetch your activity: ${err.message}`);
+        await sendMessage(chatId, "Couldn't fetch your activity. Try again in a moment.");
       }
     }
     return;
@@ -527,8 +541,13 @@ export async function handleActiveUser(user, chatId, text) {
 
   const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
   const userProfile = { fitnessLevel: user.fitness_level, fitnessGoal: user.fitness_goal, daysPerWeek: user.days_per_week, gender: user.gender, weightKg: user.weight_kg, age: user.age, heightCm: user.height_cm };
-  const answer = await answerQuestion(text, plan, recentActivities, user.context_notes, llmConfig, userProfile);
-  await sendMessage(chatId, answer);
+  try {
+    const answer = await answerQuestion(text, plan, recentActivities, user.context_notes, llmConfig, userProfile);
+    await sendMessage(chatId, answer);
+  } catch (err) {
+    console.error(`[Q&A] ERROR for chat_id=${chatId}: ${err.message}`);
+    await sendMessage(chatId, isLlmOverloaded(err) ? LLM_BUSY_MSG : "Something went wrong. Please try again.");
+  }
 }
 
 // ── Main handler ────────────────────────────────────────────────────────────

@@ -340,7 +340,8 @@ export async function handleActiveUser(user, chatId, text) {
       await sendMessage(chatId, "No plan yet! Use /newplan to generate one now, or wait until Sunday at 8 PM IST.");
       return;
     }
-    const summary = Object.entries(plan.plan).map(([day, d]) => `*${day}:* ${d.workout} (${d.duration})`).join("\n");
+    const DAY_ORDER = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+    const summary = DAY_ORDER.filter(d => plan.plan[d]).map(d => `*${d}:* ${plan.plan[d].workout} (${plan.plan[d].duration})`).join("\n");
     await sendMessage(chatId, `*Your Current Plan — week of ${plan.week_starting}*\n\n${summary}`);
     return;
   }

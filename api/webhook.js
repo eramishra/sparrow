@@ -19,7 +19,7 @@
 import { getUserByChatId, upsertUser, appendContext, getLatestPlan, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan } from "../src/supabase.js";
 import { sendMessage, sendMessageWithButtons, editMessageText, answerCallbackQuery } from "../src/telegram.js";
 import { answerQuestion, generateWeeklyPlan, explainExercise, generateActivityFeedback } from "../src/ai.js";
-import { getActivitiesSince, refreshStravaToken } from "../src/strava.js";
+import { getActivitiesSince } from "../src/strava.js";
 import { generateAndSavePlan, checkWeekDivergence } from "../src/plan.js";
 
 // ── Onboarding keyboard helpers ─────────────────────────────────────────────
@@ -430,11 +430,9 @@ export async function handleActiveUser(user, chatId, text) {
     }
     await sendMessage(chatId, "_Fetching your latest activity..._");
     try {
-      const tokens = await refreshStravaToken(user.strava_refresh_token);
-      if (tokens.refreshToken && tokens.refreshToken !== user.strava_refresh_token) {
-        await upsertUser(chatId, { strava_refresh_token: tokens.refreshToken });
-      }
-      const { activities } = await getActivitiesSince(tokens.refreshToken, new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { activities, refreshToken: newToken } = await getActivitiesSince(user.strava_refresh_token, since);
+      if (newToken !== user.strava_refresh_token) await upsertUser(chatId, { strava_refresh_token: newToken });
       if (!activities.length) {
         await sendMessage(chatId, "No activities in the last 24 hours found on Strava.");
         return;
@@ -448,11 +446,12 @@ export async function handleActiveUser(user, chatId, text) {
       const header = `🏃 *${activity.name}*\n${activity.distanceKm}km · ${activity.durationMin} min${activity.avgHeartRate ? ` · ${activity.avgHeartRate} bpm avg HR` : ""}`;
       await sendMessage(chatId, `${header}\n\n${feedback}`);
     } catch (err) {
+      console.error(`[/feedback] ERROR for chat_id=${chatId}: ${err.message}`);
       if (err.message === "STRAVA_DEAUTHORIZED") {
         await upsertUser(chatId, { strava_connected: false });
         await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
       } else {
-        await sendMessage(chatId, "Couldn't fetch your activity. Try again in a moment.");
+        await sendMessage(chatId, `Couldn't fetch your activity: ${err.message}`);
       }
     }
     return;

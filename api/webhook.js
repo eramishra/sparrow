@@ -25,10 +25,19 @@ import { generateAndSavePlan, checkWeekDivergence } from "../src/plan.js";
 // ── LLM error classifier ─────────────────────────────────────────────────────
 
 function isLlmOverloaded(err) {
-  return err.message?.includes("503") || err.message?.includes("overloaded") || err.message?.includes("high demand") || err.message?.includes("rate limit") || err.message?.toLowerCase().includes("too many requests");
+  const msg = err.message?.toLowerCase() ?? "";
+  return msg.includes("503") || msg.includes("529") || msg.includes("429")
+    || msg.includes("overloaded") || msg.includes("high demand")
+    || msg.includes("rate limit") || msg.includes("too many requests");
+}
+
+function isLlmAuthError(err) {
+  const msg = err.message?.toLowerCase() ?? "";
+  return msg.includes("401") || msg.includes("invalid x-api-key") || msg.includes("invalid api key") || msg.includes("authentication");
 }
 
 const LLM_BUSY_MSG = "My AI brain is a bit overwhelmed right now — please try again in a minute. 🧠";
+const LLM_AUTH_MSG = "Your AI API key looks invalid. Run `/llm gemini` to switch back to the default, or re-run `/llm <provider> <key>` with a valid key.";
 
 // ── Onboarding keyboard helpers ─────────────────────────────────────────────
 
@@ -325,7 +334,8 @@ export async function handleActiveUser(user, chatId, text) {
       const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(exercise + " proper form")}`;
       await sendMessage(chatId, `${explanation}\n\n🎥 [Watch on YouTube](${searchUrl})`);
     } catch (err) {
-      await sendMessage(chatId, isLlmOverloaded(err) ? LLM_BUSY_MSG : "Couldn't look that up. Try again in a moment.");
+      const msg = isLlmOverloaded(err) ? LLM_BUSY_MSG : isLlmAuthError(err) ? LLM_AUTH_MSG : "Couldn't look that up. Try again in a moment.";
+      await sendMessage(chatId, msg);
     }
     return;
   }
@@ -393,12 +403,18 @@ export async function handleActiveUser(user, chatId, text) {
         }
       }
     }
-    const { plan, usage: planUsage } = await generateAndSavePlan(user, new Date());
-    saveUsage(user.id, "plan", planUsage.provider, planUsage.model, planUsage.inputTokens, planUsage.outputTokens);
-    const summary = Object.entries(plan.plan)
-      .map(([day, d]) => `*${day}*\n• ${d.workout} (${d.duration})\n• ${d.notes}`)
-      .join("\n\n");
-    await sendMessage(chatId, `*Your Fresh Plan — from ${new Date().toDateString()}*\n\n${summary}`);
+    try {
+      const { plan, usage: planUsage } = await generateAndSavePlan(user, new Date());
+      saveUsage(user.id, "plan", planUsage.provider, planUsage.model, planUsage.inputTokens, planUsage.outputTokens);
+      const summary = Object.entries(plan.plan)
+        .map(([day, d]) => `*${day}*\n• ${d.workout} (${d.duration})\n• ${d.notes}`)
+        .join("\n\n");
+      await sendMessage(chatId, `*Your Fresh Plan — from ${new Date().toDateString()}*\n\n${summary}`);
+    } catch (err) {
+      console.error(`[/newplan] ERROR for chat_id=${chatId}: ${err.message}`);
+      const errMsg = isLlmOverloaded(err) ? LLM_BUSY_MSG : isLlmAuthError(err) ? LLM_AUTH_MSG : "Couldn't generate your plan. Try again in a moment.";
+      await sendMessage(chatId, errMsg);
+    }
     return;
   }
 
@@ -480,6 +496,8 @@ export async function handleActiveUser(user, chatId, text) {
         await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
       } else if (isLlmOverloaded(err)) {
         await sendMessage(chatId, LLM_BUSY_MSG);
+      } else if (isLlmAuthError(err)) {
+        await sendMessage(chatId, LLM_AUTH_MSG);
       } else {
         await sendMessage(chatId, "Couldn't fetch your activity. Try again in a moment.");
       }
@@ -563,7 +581,8 @@ export async function handleActiveUser(user, chatId, text) {
     await sendMessage(chatId, answer);
   } catch (err) {
     console.error(`[Q&A] ERROR for chat_id=${chatId}: ${err.message}`);
-    await sendMessage(chatId, isLlmOverloaded(err) ? LLM_BUSY_MSG : "Something went wrong. Please try again.");
+    const errMsg = isLlmOverloaded(err) ? LLM_BUSY_MSG : isLlmAuthError(err) ? LLM_AUTH_MSG : "Something went wrong. Please try again.";
+    await sendMessage(chatId, errMsg);
   }
 }
 

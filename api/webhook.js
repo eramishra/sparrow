@@ -423,6 +423,11 @@ export async function handleActiveUser(user, chatId, text) {
   }
 
   if (text === "/connect") {
+    if (process.env.STRAVA_APP_PENDING === "true") {
+      await upsertUser(chatId, { strava_pending_reconnect: true });
+      await sendMessage(chatId, "Strava connection is temporarily unavailable — the app is pending Strava's approval for multiple users. We'll notify you as soon as it's open. Sorry for the wait!");
+      return;
+    }
     await sendMessage(chatId, `Connect your Strava account: [Click here](${getStravaAuthUrl(chatId)})`);
     return;
   }

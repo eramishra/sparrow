@@ -39,6 +39,20 @@ function isLlmAuthError(err) {
 const LLM_BUSY_MSG = "My AI brain is a bit overwhelmed right now — please try again in a minute. 🧠";
 const LLM_AUTH_MSG = "Your AI API key looks invalid. Run `/llm gemini` to switch back to the default, or re-run `/llm <provider> <key>` with a valid key.";
 
+// ── Strava error classifier ───────────────────────────────────────────────────
+
+const STRAVA_ERRORS = {
+  STRAVA_DEAUTHORIZED:    "Your Strava connection has expired. Use /connect to reconnect.",
+  STRAVA_APP_NOT_APPROVED:"Strava connection is temporarily unavailable — the app is pending approval. You'll be notified once it's open.",
+  STRAVA_RATE_LIMITED:    "Strava is rate limiting requests right now. Try again in 15 minutes.",
+  STRAVA_NOT_FOUND:       "That activity wasn't found on Strava.",
+  STRAVA_SERVER_ERROR:    "Strava is having server issues. Try again in a few minutes.",
+};
+
+function stravaErrorMessage(err) {
+  return STRAVA_ERRORS[err.message] ?? null;
+}
+
 // ── Onboarding keyboard helpers ─────────────────────────────────────────────
 
 const FITNESS_LEVEL_KEYBOARD = [
@@ -396,11 +410,9 @@ export async function handleActiveUser(user, chatId, text) {
         if (newToken !== user.strava_refresh_token) await upsertUser(chatId, { strava_refresh_token: newToken });
         await saveActivities(user.id, activities);
       } catch (err) {
-        if (err.message === "STRAVA_DEAUTHORIZED") {
-          await upsertUser(chatId, { strava_connected: false });
-          await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
-          return;
-        }
+        if (err.message === "STRAVA_DEAUTHORIZED") await upsertUser(chatId, { strava_connected: false });
+        const stravaMsg = stravaErrorMessage(err);
+        if (stravaMsg) { await sendMessage(chatId, stravaMsg); return; }
       }
     }
     try {
@@ -438,11 +450,9 @@ export async function handleActiveUser(user, chatId, text) {
           activities = await getActivitiesForUser(user.id, new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString());
         }
       } catch (err) {
-        if (err.message === "STRAVA_DEAUTHORIZED") {
-          await upsertUser(chatId, { strava_connected: false });
-          await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
-          return;
-        }
+        if (err.message === "STRAVA_DEAUTHORIZED") await upsertUser(chatId, { strava_connected: false });
+        const stravaMsg = stravaErrorMessage(err);
+        if (stravaMsg) { await sendMessage(chatId, stravaMsg); return; }
       }
     }
 
@@ -493,14 +503,9 @@ export async function handleActiveUser(user, chatId, text) {
       console.error(`[/feedback] ERROR for chat_id=${chatId}: ${err.message}`);
       if (err.message === "STRAVA_DEAUTHORIZED") {
         await upsertUser(chatId, { strava_connected: false });
-        await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
-      } else if (isLlmOverloaded(err)) {
-        await sendMessage(chatId, LLM_BUSY_MSG);
-      } else if (isLlmAuthError(err)) {
-        await sendMessage(chatId, LLM_AUTH_MSG);
-      } else {
-        await sendMessage(chatId, "Couldn't fetch your activity. Try again in a moment.");
       }
+      const msg = stravaErrorMessage(err) ?? (isLlmOverloaded(err) ? LLM_BUSY_MSG : isLlmAuthError(err) ? LLM_AUTH_MSG : "Couldn't fetch your activity. Try again in a moment.");
+      await sendMessage(chatId, msg);
     }
     return;
   }
@@ -565,10 +570,9 @@ export async function handleActiveUser(user, chatId, text) {
         recentActivities = await getActivitiesForUser(user.id, new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString());
       }
     } catch (err) {
-      if (err.message === "STRAVA_DEAUTHORIZED") {
-        await upsertUser(chatId, { strava_connected: false });
-        await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
-      }
+      if (err.message === "STRAVA_DEAUTHORIZED") await upsertUser(chatId, { strava_connected: false });
+      const stravaMsg = stravaErrorMessage(err);
+      if (stravaMsg) await sendMessage(chatId, stravaMsg);
       console.error("Live Strava fetch failed:", err.message);
     }
   }

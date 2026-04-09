@@ -44,7 +44,12 @@ export default async function handler(req, res) {
         tokens = await refreshStravaToken(user.strava_refresh_token);
       } catch (err) {
         if (err.message === "STRAVA_APP_NOT_APPROVED") {
-          console.warn(`[strava-webhook] App not yet approved by Strava — skipping activity ${activityId} for athlete_id=${stravaAthleteId}`);
+          console.warn(`[strava-webhook] App not yet approved — skipping activity ${activityId}`);
+          return;
+        }
+        if (err.message === "STRAVA_DEAUTHORIZED") {
+          await upsertUser(user.telegram_chat_id, { strava_connected: false });
+          await sendMessage(user.telegram_chat_id, "Your Strava connection has expired. Use /connect to reconnect.").catch(() => {});
           return;
         }
         throw err;
@@ -68,7 +73,15 @@ export default async function handler(req, res) {
       const activityHeader = `🏃 *${activity.name}* synced\n${activity.distanceKm}km · ${activity.durationMin} min${activity.avgHeartRate ? ` · ${activity.avgHeartRate} bpm avg HR` : ""}`;
       await sendMessage(user.telegram_chat_id, `${activityHeader}\n\n${feedback}`);
     } catch (err) {
-      console.error(`[strava-webhook] ERROR for athlete_id=${stravaAthleteId}: ${err.message}\n${err.stack}`);
+      if (err.message === "STRAVA_RATE_LIMITED") {
+        console.warn(`[strava-webhook] Strava rate limited — skipping activity ${activityId}`);
+      } else if (err.message === "STRAVA_NOT_FOUND") {
+        console.warn(`[strava-webhook] Activity ${activityId} not found on Strava — skipping`);
+      } else if (err.message === "STRAVA_SERVER_ERROR") {
+        console.warn(`[strava-webhook] Strava server error for activity ${activityId} — skipping`);
+      } else {
+        console.error(`[strava-webhook] ERROR for athlete_id=${stravaAthleteId}: ${err.message}\n${err.stack}`);
+      }
     }
   }
 }

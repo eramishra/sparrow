@@ -30,6 +30,15 @@ export async function refreshStravaToken(refreshToken) {
   return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: data.expires_at };
 }
 
+function throwStravaApiError(status, body, context) {
+  if (status === 401) throw new Error("STRAVA_DEAUTHORIZED");
+  if (status === 403) throw new Error("STRAVA_APP_NOT_APPROVED");
+  if (status === 404) throw new Error("STRAVA_NOT_FOUND");
+  if (status === 429) throw new Error("STRAVA_RATE_LIMITED");
+  if (status >= 500) throw new Error("STRAVA_SERVER_ERROR");
+  throw new Error(`${context}: ${status} ${body}`);
+}
+
 async function fetchActivities(accessToken, after, before) {
   const activities = [];
   let page = 1;
@@ -39,7 +48,7 @@ async function fetchActivities(accessToken, after, before) {
       `${STRAVA_API_BASE}/athlete/activities?after=${after}&before=${before}&per_page=100&page=${page}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    if (!res.ok) throw new Error(`Failed to fetch Strava activities: ${res.status} ${await res.text()}`);
+    if (!res.ok) throwStravaApiError(res.status, await res.text(), "Failed to fetch Strava activities");
     const batch = await res.json();
     if (batch.length === 0) break;
     activities.push(...batch);
@@ -71,7 +80,7 @@ export async function getActivityById(accessToken, activityId) {
   const res = await fetch(`${STRAVA_API_BASE}/activities/${activityId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error(`Failed to fetch Strava activity ${activityId}: ${res.status} ${await res.text()}`);
+  if (!res.ok) throwStravaApiError(res.status, await res.text(), `Failed to fetch Strava activity ${activityId}`);
   const a = await res.json();
   return {
     id: a.id,

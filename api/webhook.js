@@ -424,8 +424,7 @@ export async function handleActiveUser(user, chatId, text) {
       await sendMessage(chatId, `*Your Fresh Plan — from ${new Date().toDateString()}*\n\n${summary}`);
     } catch (err) {
       console.error(`[/newplan] ERROR for chat_id=${chatId}: ${err.message}`);
-      const errMsg = isLlmOverloaded(err) ? LLM_BUSY_MSG : isLlmAuthError(err) ? LLM_AUTH_MSG : "Couldn't generate your plan. Try again in a moment.";
-      await sendMessage(chatId, errMsg);
+      await sendMessage(chatId, `Plan generation failed: ${err.message}`);
     }
     return;
   }

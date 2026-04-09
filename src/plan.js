@@ -26,6 +26,8 @@ export function activityMatchesPlan(activity, plannedDay) {
   if (/strength|weight|gym|lift/i.test(plan) && /weight|strength|crossfit/i.test(act)) return true;
   if (/walk/i.test(plan) && /walk/i.test(act)) return true;
   if (/yoga|stretch|mobility/i.test(plan) && /yoga/i.test(act)) return true;
+  // Strava's generic "Workout" type — match any non-rest planned activity
+  if (act === "workout") return true;
 
   return false;
 }

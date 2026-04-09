@@ -18,8 +18,8 @@
 
 import { getUserByChatId, upsertUser, appendContext, getLatestPlan, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan } from "../src/supabase.js";
 import { sendMessage, sendMessageWithButtons, editMessageText, answerCallbackQuery } from "../src/telegram.js";
-import { answerQuestion, generateWeeklyPlan, explainExercise } from "../src/ai.js";
-import { getActivitiesSince } from "../src/strava.js";
+import { answerQuestion, generateWeeklyPlan, explainExercise, generateActivityFeedback } from "../src/ai.js";
+import { getActivitiesSince, refreshStravaToken } from "../src/strava.js";
 import { generateAndSavePlan, checkWeekDivergence } from "../src/plan.js";
 
 // ── Onboarding keyboard helpers ─────────────────────────────────────────────
@@ -273,7 +273,8 @@ export async function handleActiveUser(user, chatId, text) {
       `*Plans*\n` +
       `• /plan — show current week's plan\n` +
       `• /newplan — generate a fresh plan starting today\n` +
-      `• /checkplan — check if your week has drifted and refresh if needed\n\n` +
+      `• /checkplan — check if your week has drifted and refresh if needed\n` +
+      `• /feedback — get coaching feedback on your latest activity\n\n` +
       `*Exercise Guide*\n` +
       `• /howto <exercise> — form cues + YouTube link\n\n` +
       `*Profile*\n` +
@@ -418,6 +419,41 @@ export async function handleActiveUser(user, chatId, text) {
       await sendMessage(chatId, `Plan looks mostly on track ✅\n\nOne day drifted (${drifted}) but not enough to warrant a full reset. Keep going with the current plan or use /newplan to start fresh.`);
     } else {
       await sendMessage(chatId, `You're right on track this week 💪 No changes needed to your plan.`);
+    }
+    return;
+  }
+
+  if (text === "/feedback") {
+    if (!user.strava_connected || !user.strava_refresh_token) {
+      await sendMessage(chatId, "Strava isn't connected — no activity data available. Use /connect to link it.");
+      return;
+    }
+    await sendMessage(chatId, "_Fetching your latest activity..._");
+    try {
+      const tokens = await refreshStravaToken(user.strava_refresh_token);
+      if (tokens.refreshToken && tokens.refreshToken !== user.strava_refresh_token) {
+        await upsertUser(chatId, { strava_refresh_token: tokens.refreshToken });
+      }
+      const { activities } = await getActivitiesSince(tokens.refreshToken, new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+      if (!activities.length) {
+        await sendMessage(chatId, "No activities in the last 24 hours found on Strava.");
+        return;
+      }
+      const activity = activities[0];
+      const plan = await getLatestPlan(user.id);
+      const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const plannedDay = plan?.plan?.[DAY_NAMES[new Date(activity.startDateIso).getDay()]] ?? null;
+      const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
+      const feedback = await generateActivityFeedback(activity, plannedDay, llmConfig);
+      const header = `🏃 *${activity.name}*\n${activity.distanceKm}km · ${activity.durationMin} min${activity.avgHeartRate ? ` · ${activity.avgHeartRate} bpm avg HR` : ""}`;
+      await sendMessage(chatId, `${header}\n\n${feedback}`);
+    } catch (err) {
+      if (err.message === "STRAVA_DEAUTHORIZED") {
+        await upsertUser(chatId, { strava_connected: false });
+        await sendMessage(chatId, "Your Strava connection has expired. Use /connect to reconnect.");
+      } else {
+        await sendMessage(chatId, "Couldn't fetch your activity. Try again in a moment.");
+      }
     }
     return;
   }

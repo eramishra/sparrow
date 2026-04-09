@@ -6,6 +6,28 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { buildPlanPrompt, buildQAPrompt, buildHowToPrompt, buildActivityFeedbackPrompt } from "./prompts.js";
 
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+function isOverloaded(err) {
+  const msg = err.message?.toLowerCase() ?? "";
+  return msg.includes("503") || msg.includes("529") || msg.includes("overloaded") || msg.includes("high demand");
+}
+
+async function withRetry(fn, maxAttempts = 3, delayMs = 4000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (isOverloaded(err) && attempt < maxAttempts) {
+        console.warn(`[ai] Overloaded (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms...`);
+        await new Promise(r => setTimeout(r, delayMs * attempt));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 // ─── Gemini ────────────────────────────────────────────────────────────────
 
 async function geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile) {
@@ -107,10 +129,11 @@ async function openaiQA(apiKey, question, plan, recentActivities, contextNotes, 
 
 export async function generateWeeklyPlan(recentActivities, historyActivities, contextNotes = "", fitnessBackground = "already_active", llmConfig = {}, startDate = null, userProfile = {}) {
   const { provider = "gemini", apiKey } = llmConfig;
-  let result;
-  if (provider === "claude") result = await claudePlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-  else if (provider === "openai") result = await openaiPlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-  else result = await geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  const result = await withRetry(() => {
+    if (provider === "claude") return claudePlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+    if (provider === "openai") return openaiPlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+    return geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  });
   return { ...result.data, usage: result.usage };
 }
 

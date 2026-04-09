@@ -16,7 +16,7 @@
  *   anything else       — Q&A (with smart DB routing for plan queries)
  */
 
-import { getUserByChatId, upsertUser, appendContext, getLatestPlan, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan } from "../src/supabase.js";
+import { getUserByChatId, upsertUser, appendContext, getLatestPlan, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan, saveUsage } from "../src/supabase.js";
 import { sendMessage, sendMessageWithButtons, editMessageText, answerCallbackQuery } from "../src/telegram.js";
 import { answerQuestion, generateWeeklyPlan, explainExercise, generateActivityFeedback } from "../src/ai.js";
 import { getActivitiesSince } from "../src/strava.js";
@@ -320,7 +320,8 @@ export async function handleActiveUser(user, chatId, text) {
     }
     const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
     try {
-      const explanation = await explainExercise(exercise, llmConfig);
+      const { text: explanation, usage } = await explainExercise(exercise, llmConfig);
+      saveUsage(user.id, "howto", usage.provider, usage.model, usage.inputTokens, usage.outputTokens);
       const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(exercise + " proper form")}`;
       await sendMessage(chatId, `${explanation}\n\n🎥 [Watch on YouTube](${searchUrl})`);
     } catch (err) {
@@ -392,7 +393,8 @@ export async function handleActiveUser(user, chatId, text) {
         }
       }
     }
-    const { plan } = await generateAndSavePlan(user, new Date());
+    const { plan, usage: planUsage } = await generateAndSavePlan(user, new Date());
+    saveUsage(user.id, "plan", planUsage.provider, planUsage.model, planUsage.inputTokens, planUsage.outputTokens);
     const summary = Object.entries(plan.plan)
       .map(([day, d]) => `*${day}*\n• ${d.workout} (${d.duration})\n• ${d.notes}`)
       .join("\n\n");
@@ -433,7 +435,8 @@ export async function handleActiveUser(user, chatId, text) {
     if (divergenceCount >= 2) {
       await sendMessage(chatId, `Your week has drifted from the plan — regenerating now... 🔄\n\n_Missed: ${missedDays.join(", ") || "none"}_\n_Different activity: ${mismatchedDays.join(", ") || "none"}_`);
       const freshUser = await getUserByChatId(chatId);
-      const { plan: newPlan } = await generateAndSavePlan(freshUser, new Date());
+      const { plan: newPlan, usage: checkUsage } = await generateAndSavePlan(freshUser, new Date());
+      saveUsage(freshUser.id, "plan", checkUsage.provider, checkUsage.model, checkUsage.inputTokens, checkUsage.outputTokens);
       const summary = Object.entries(newPlan.plan)
         .map(([day, d]) => `*${day}*\n• ${d.workout} (${d.duration})\n• ${d.notes}`)
         .join("\n\n");
@@ -466,7 +469,8 @@ export async function handleActiveUser(user, chatId, text) {
       const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
       const plannedDay = plan?.plan?.[DAY_NAMES[new Date(activity.startDateIso).getDay()]] ?? null;
       const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
-      const feedback = await generateActivityFeedback(activity, plannedDay, llmConfig);
+      const { text: feedback, usage } = await generateActivityFeedback(activity, plannedDay, llmConfig);
+      saveUsage(user.id, "feedback", usage.provider, usage.model, usage.inputTokens, usage.outputTokens);
       const header = `🏃 *${activity.name}*\n${activity.distanceKm}km · ${activity.durationMin} min${activity.avgHeartRate ? ` · ${activity.avgHeartRate} bpm avg HR` : ""}`;
       await sendMessage(chatId, `${header}\n\n${feedback}`);
     } catch (err) {
@@ -554,7 +558,8 @@ export async function handleActiveUser(user, chatId, text) {
   const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
   const userProfile = { fitnessLevel: user.fitness_level, fitnessGoal: user.fitness_goal, daysPerWeek: user.days_per_week, gender: user.gender, weightKg: user.weight_kg, age: user.age, heightCm: user.height_cm };
   try {
-    const answer = await answerQuestion(text, plan, recentActivities, user.context_notes, llmConfig, userProfile);
+    const { text: answer, usage } = await answerQuestion(text, plan, recentActivities, user.context_notes, llmConfig, userProfile);
+    saveUsage(user.id, "qa", usage.provider, usage.model, usage.inputTokens, usage.outputTokens);
     await sendMessage(chatId, answer);
   } catch (err) {
     console.error(`[Q&A] ERROR for chat_id=${chatId}: ${err.message}`);

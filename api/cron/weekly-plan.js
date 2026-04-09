@@ -3,7 +3,7 @@
  * Generates a weekly workout plan for every active user
  */
 
-import { getAllActiveUsers, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan, upsertUser } from "../../src/supabase.js";
+import { getAllActiveUsers, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan, upsertUser, saveUsage } from "../../src/supabase.js";
 import { getActivitiesSince } from "../../src/strava.js";
 import { answerQuestion } from "../../src/ai.js";
 import { sendMessage } from "../../src/telegram.js";
@@ -35,10 +35,11 @@ export default async function handler(req, res) {
         await saveActivities(user.id, activities);
       }
 
-      const { plan, llmConfig, recent } = await generateAndSavePlan(user, monday);
+      const { plan, llmConfig, recent, usage: planUsage } = await generateAndSavePlan(user, monday);
+      saveUsage(user.id, "plan", planUsage.provider, planUsage.model, planUsage.inputTokens, planUsage.outputTokens);
 
       const userProfile = { fitnessLevel: user.fitness_level, fitnessGoal: user.fitness_goal, daysPerWeek: user.days_per_week, gender: user.gender, weightKg: user.weight_kg, age: user.age, heightCm: user.height_cm };
-      const message = await answerQuestion(
+      const { text: message, usage: qaUsage } = await answerQuestion(
         "Write out my complete workout plan for next week in full detail.",
         plan,
         recent,
@@ -46,6 +47,7 @@ export default async function handler(req, res) {
         llmConfig,
         userProfile
       );
+      saveUsage(user.id, "qa", qaUsage.provider, qaUsage.model, qaUsage.inputTokens, qaUsage.outputTokens);
       await sendMessage(user.telegram_chat_id, `*Your Workout Plan — Week of ${plan.weekStarting}*\n\n${message}`);
 
       success++;

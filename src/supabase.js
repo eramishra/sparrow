@@ -120,6 +120,19 @@ export async function getUsersPendingStravaReconnect() {
   return data || [];
 }
 
+export function saveUsage(userId, callType, provider, model, inputTokens, outputTokens) {
+  supabase.from("llm_usage").insert({
+    user_id: userId,
+    call_type: callType,
+    provider,
+    model,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+  }).then(({ error }) => {
+    if (error) console.error("[saveUsage] Failed:", error.message);
+  });
+}
+
 export async function getAllActiveUsers() {
   const { data, error } = await supabase.from("users").select("*").eq("onboarding_step", "done");
   if (error) throw error;

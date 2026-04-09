@@ -5,7 +5,7 @@
  * POST /api/strava-webhook  — activity event handler (called on every new activity)
  */
 
-import { getUserByStravaAthleteId, upsertUser, saveActivities, getLatestPlan } from "../src/supabase.js";
+import { getUserByStravaAthleteId, upsertUser, saveActivities, getLatestPlan, saveUsage } from "../src/supabase.js";
 import { refreshStravaToken, getActivityById } from "../src/strava.js";
 import { sendMessage } from "../src/telegram.js";
 import { generateActivityFeedback } from "../src/ai.js";
@@ -63,7 +63,8 @@ export default async function handler(req, res) {
       const plannedDay = plan?.plan?.[activityDayName] ?? null;
 
       const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
-      const feedback = await generateActivityFeedback(activity, plannedDay, llmConfig);
+      const { text: feedback, usage } = await generateActivityFeedback(activity, plannedDay, llmConfig);
+      saveUsage(user.id, "feedback", usage.provider, usage.model, usage.inputTokens, usage.outputTokens);
       const activityHeader = `🏃 *${activity.name}* synced\n${activity.distanceKm}km · ${activity.durationMin} min${activity.avgHeartRate ? ` · ${activity.avgHeartRate} bpm avg HR` : ""}`;
       await sendMessage(user.telegram_chat_id, `${activityHeader}\n\n${feedback}`);
     } catch (err) {

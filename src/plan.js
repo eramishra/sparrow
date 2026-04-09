@@ -105,8 +105,9 @@ export async function generateAndSavePlan(user, startDate = null) {
     return d;
   })();
 
-  const plan = await generateWeeklyPlan(recent, history, user.context_notes, user.fitness_background, llmConfig, start, userProfile);
+  const planResult = await generateWeeklyPlan(recent, history, user.context_notes, user.fitness_background, llmConfig, start, userProfile);
+  const { usage, ...plan } = planResult;
   await saveWeeklyPlan(user.id, new Date(start).toISOString().split("T")[0], plan.plan);
 
-  return { plan, llmConfig, recent };
+  return { plan, llmConfig, recent, usage };
 }

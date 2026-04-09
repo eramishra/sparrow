@@ -1,5 +1,7 @@
 /**
  * AI router — delegates to Gemini (default), Claude, or OpenAI based on user preference
+ * All public functions return { text, usage } or { ...planFields, usage }
+ * usage: { inputTokens, outputTokens, model, provider }
  */
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { buildPlanPrompt, buildQAPrompt, buildHowToPrompt, buildActivityFeedbackPrompt } from "./prompts.js";
@@ -13,14 +15,22 @@ async function geminiPlan(recentActivities, historyActivities, contextNotes, fit
     generationConfig: { responseMimeType: "application/json" },
   });
   const result = await model.generateContent(buildPlanPrompt(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile));
-  return JSON.parse(result.response.text());
+  const meta = result.response.usageMetadata;
+  return {
+    data: JSON.parse(result.response.text()),
+    usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: "gemini-2.5-flash", provider: "gemini" },
+  };
 }
 
 async function geminiQA(question, plan, recentActivities, contextNotes, userProfile) {
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
   const result = await model.generateContent(buildQAPrompt(question, plan, recentActivities, contextNotes, userProfile));
-  return result.response.text().trim();
+  const meta = result.response.usageMetadata;
+  return {
+    text: result.response.text().trim(),
+    usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: "gemini-2.5-flash", provider: "gemini" },
+  };
 }
 
 // ─── Claude ────────────────────────────────────────────────────────────────
@@ -36,7 +46,10 @@ async function claudePlan(apiKey, recentActivities, historyActivities, contextNo
   const text = message.content[0].text.trim();
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("Claude did not return valid JSON");
-  return JSON.parse(match[0]);
+  return {
+    data: JSON.parse(match[0]),
+    usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens, model: "claude-haiku-4-5-20251001", provider: "claude" },
+  };
 }
 
 async function claudeQA(apiKey, question, plan, recentActivities, contextNotes, userProfile) {
@@ -47,7 +60,10 @@ async function claudeQA(apiKey, question, plan, recentActivities, contextNotes, 
     max_tokens: 512,
     messages: [{ role: "user", content: buildQAPrompt(question, plan, recentActivities, contextNotes, userProfile) }],
   });
-  return message.content[0].text.trim();
+  return {
+    text: message.content[0].text.trim(),
+    usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens, model: "claude-haiku-4-5-20251001", provider: "claude" },
+  };
 }
 
 // ─── OpenAI ────────────────────────────────────────────────────────────────
@@ -64,7 +80,10 @@ async function openaiPlan(apiKey, recentActivities, historyActivities, contextNo
   });
   if (!res.ok) throw new Error(`OpenAI error: ${res.status} ${await res.text()}`);
   const data = await res.json();
-  return JSON.parse(data.choices[0].message.content);
+  return {
+    data: JSON.parse(data.choices[0].message.content),
+    usage: { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens, model: "gpt-4o-mini", provider: "openai" },
+  };
 }
 
 async function openaiQA(apiKey, question, plan, recentActivities, contextNotes, userProfile) {
@@ -78,16 +97,21 @@ async function openaiQA(apiKey, question, plan, recentActivities, contextNotes, 
   });
   if (!res.ok) throw new Error(`OpenAI error: ${res.status} ${await res.text()}`);
   const data = await res.json();
-  return data.choices[0].message.content.trim();
+  return {
+    text: data.choices[0].message.content.trim(),
+    usage: { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens, model: "gpt-4o-mini", provider: "openai" },
+  };
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
 export async function generateWeeklyPlan(recentActivities, historyActivities, contextNotes = "", fitnessBackground = "already_active", llmConfig = {}, startDate = null, userProfile = {}) {
   const { provider = "gemini", apiKey } = llmConfig;
-  if (provider === "claude") return claudePlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-  if (provider === "openai") return openaiPlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-  return geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  let result;
+  if (provider === "claude") result = await claudePlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  else if (provider === "openai") result = await openaiPlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  else result = await geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  return { ...result.data, usage: result.usage };
 }
 
 export async function explainExercise(exercise, llmConfig = {}) {
@@ -102,7 +126,7 @@ export async function explainExercise(exercise, llmConfig = {}) {
       max_tokens: 512,
       messages: [{ role: "user", content: prompt }],
     });
-    return message.content[0].text.trim();
+    return { text: message.content[0].text.trim(), usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens, model: "claude-haiku-4-5-20251001", provider: "claude" } };
   }
 
   if (provider === "openai") {
@@ -113,13 +137,14 @@ export async function explainExercise(exercise, llmConfig = {}) {
     });
     if (!res.ok) throw new Error(`OpenAI error: ${res.status} ${await res.text()}`);
     const data = await res.json();
-    return data.choices[0].message.content.trim();
+    return { text: data.choices[0].message.content.trim(), usage: { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens, model: "gpt-4o-mini", provider: "openai" } };
   }
 
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
   const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+  const meta = result.response.usageMetadata;
+  return { text: result.response.text().trim(), usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: "gemini-2.5-flash", provider: "gemini" } };
 }
 
 export async function generateActivityFeedback(activity, plannedDay, llmConfig = {}) {
@@ -134,7 +159,7 @@ export async function generateActivityFeedback(activity, plannedDay, llmConfig =
       max_tokens: 256,
       messages: [{ role: "user", content: prompt }],
     });
-    return message.content[0].text.trim();
+    return { text: message.content[0].text.trim(), usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens, model: "claude-haiku-4-5-20251001", provider: "claude" } };
   }
 
   if (provider === "openai") {
@@ -145,13 +170,14 @@ export async function generateActivityFeedback(activity, plannedDay, llmConfig =
     });
     if (!res.ok) throw new Error(`OpenAI error: ${res.status} ${await res.text()}`);
     const data = await res.json();
-    return data.choices[0].message.content.trim();
+    return { text: data.choices[0].message.content.trim(), usage: { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens, model: "gpt-4o-mini", provider: "openai" } };
   }
 
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
   const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+  const meta = result.response.usageMetadata;
+  return { text: result.response.text().trim(), usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: "gemini-2.5-flash", provider: "gemini" } };
 }
 
 export async function answerQuestion(question, plan, recentActivities, contextNotes = "", llmConfig = {}, userProfile = {}) {

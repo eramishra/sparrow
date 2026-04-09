@@ -61,6 +61,35 @@ export async function getActivitiesForUser(userId, sinceIso) {
   return data || [];
 }
 
+/**
+ * Returns all activities from the N most recent calendar days that had at least one activity,
+ * looking back up to withinDays days. Sorted newest-first.
+ */
+export async function getActiveDays(userId, maxDays = 30, withinDays = 180) {
+  const since = new Date(Date.now() - withinDays * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("fitness_activities")
+    .select("*")
+    .eq("user_id", userId)
+    .gte("started_at", since)
+    .order("started_at", { ascending: false });
+  if (error) throw error;
+  const activities = data || [];
+
+  // Collect the N most recent unique active dates
+  const seenDates = new Set();
+  const keepDates = new Set();
+  for (const a of activities) {
+    const date = (a.started_at || "").slice(0, 10);
+    if (!seenDates.has(date)) {
+      seenDates.add(date);
+      if (seenDates.size <= maxDays) keepDates.add(date);
+    }
+  }
+
+  return activities.filter(a => keepDates.has((a.started_at || "").slice(0, 10)));
+}
+
 export async function getLastActivityDate(userId) {
   const { data } = await supabase
     .from("fitness_activities")

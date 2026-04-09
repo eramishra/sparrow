@@ -3,7 +3,7 @@
  * Used by cron, webhook /newplan, /update, and strava-webhook
  */
 
-import { getActivitiesForUser, saveWeeklyPlan } from "./supabase.js";
+import { getActiveDays, saveWeeklyPlan } from "./supabase.js";
 import { generateWeeklyPlan } from "./ai.js";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -80,12 +80,7 @@ export function checkWeekDivergence(plan, activities) {
 }
 
 export async function generateAndSavePlan(user, startDate = null) {
-  const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const [history, recent] = await Promise.all([
-    getActivitiesForUser(user.id, sixMonthsAgo),
-    getActivitiesForUser(user.id, weekAgo),
-  ]);
+  const activities = await getActiveDays(user.id, 30, 180);
 
   const llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
   const userProfile = {
@@ -105,9 +100,9 @@ export async function generateAndSavePlan(user, startDate = null) {
     return d;
   })();
 
-  const planResult = await generateWeeklyPlan(recent, history, user.context_notes, user.fitness_background, llmConfig, start, userProfile);
+  const planResult = await generateWeeklyPlan(activities, user.context_notes, user.fitness_background, llmConfig, start, userProfile);
   const { usage, ...plan } = planResult;
   await saveWeeklyPlan(user.id, new Date(start).toISOString().split("T")[0], plan.plan);
 
-  return { plan, llmConfig, recent, usage };
+  return { plan, llmConfig, recent: activities, usage };
 }

@@ -30,9 +30,9 @@ async function withRetry(fn, maxAttempts = 3, delayMs = 4000) {
 
 // ─── Gemini ────────────────────────────────────────────────────────────────
 
-async function geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile) {
+async function geminiPlan(activities, contextNotes, fitnessBackground, startDate, userProfile) {
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const prompt = buildPlanPrompt(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  const prompt = buildPlanPrompt(activities, contextNotes, fitnessBackground, startDate, userProfile);
   const models = ["gemini-2.5-flash", "gemini-1.5-flash"];
   let lastErr;
   for (const modelId of models) {
@@ -69,13 +69,13 @@ async function geminiQA(question, plan, recentActivities, contextNotes, userProf
 
 // ─── Claude ────────────────────────────────────────────────────────────────
 
-async function claudePlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile) {
+async function claudePlan(apiKey, activities, contextNotes, fitnessBackground, startDate, userProfile) {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 2048,
-    messages: [{ role: "user", content: buildPlanPrompt(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile) }],
+    messages: [{ role: "user", content: buildPlanPrompt(activities, contextNotes, fitnessBackground, startDate, userProfile) }],
   });
   const text = message.content[0].text.trim();
   const match = text.match(/\{[\s\S]*\}/);
@@ -102,14 +102,14 @@ async function claudeQA(apiKey, question, plan, recentActivities, contextNotes, 
 
 // ─── OpenAI ────────────────────────────────────────────────────────────────
 
-async function openaiPlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile) {
+async function openaiPlan(apiKey, activities, contextNotes, fitnessBackground, startDate, userProfile) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: "gpt-4o-mini",
       response_format: { type: "json_object" },
-      messages: [{ role: "user", content: buildPlanPrompt(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile) }],
+      messages: [{ role: "user", content: buildPlanPrompt(activities, contextNotes, fitnessBackground, startDate, userProfile) }],
     }),
   });
   if (!res.ok) throw new Error(`OpenAI error: ${res.status} ${await res.text()}`);
@@ -139,12 +139,12 @@ async function openaiQA(apiKey, question, plan, recentActivities, contextNotes, 
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
-export async function generateWeeklyPlan(recentActivities, historyActivities, contextNotes = "", fitnessBackground = "already_active", llmConfig = {}, startDate = null, userProfile = {}) {
+export async function generateWeeklyPlan(activities, contextNotes = "", fitnessBackground = "already_active", llmConfig = {}, startDate = null, userProfile = {}) {
   const { provider = "gemini", apiKey } = llmConfig;
   let result;
-  if (provider === "claude") result = await claudePlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-  else if (provider === "openai") result = await openaiPlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-  else result = await geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  if (provider === "claude") result = await claudePlan(apiKey, activities, contextNotes, fitnessBackground, startDate, userProfile);
+  else if (provider === "openai") result = await openaiPlan(apiKey, activities, contextNotes, fitnessBackground, startDate, userProfile);
+  else result = await geminiPlan(activities, contextNotes, fitnessBackground, startDate, userProfile);
   return { ...result.data, usage: result.usage };
 }
 

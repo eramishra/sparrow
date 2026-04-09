@@ -52,7 +52,7 @@ export function formatActivities(activities) {
     .join("\n");
 }
 
-export function buildPlanPrompt(recentActivities, historyActivities, contextNotes = "", fitnessBackground = "already_active", startDate = null, userProfile = {}) {
+export function buildPlanPrompt(activities, contextNotes = "", fitnessBackground = "already_active", startDate = null, userProfile = {}) {
   const start = startDate ? new Date(startDate) : (() => {
     const d = new Date();
     const daysUntilMonday = d.getDay() === 0 ? 1 : 8 - d.getDay();
@@ -76,13 +76,12 @@ export function buildPlanPrompt(recentActivities, historyActivities, contextNote
 
   return `You are an expert personal fitness coach creating a structured workout plan.
 ${formatProfile(userProfile)}${backgroundNote}${contextSection}
-## Athlete's Activity History (last 6 months)
-${formatActivities(historyActivities)}
-
-## Last Week's Activities (for load & recovery context)
-${formatActivities(recentActivities)}
+## Activity History (30 most recent active days, newest first)
+${formatActivities(activities)}
 
 ## Instructions
+The history above is sorted newest-first. Entries from the last 7 days are at the top — treat these as your primary load and recovery signal. Avoid scheduling hard sessions immediately after back-to-back hard days or high-HR efforts.
+
 Create a realistic, well-balanced plan from ${start.toDateString()} through Sunday. For each day:
 - workout: specific activity name (e.g. "Easy 5km Run", "Upper Body Strength", "Rest Day")
 - duration: time range (e.g. "45-60 min", "30 min", "—")

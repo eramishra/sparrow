@@ -2,7 +2,7 @@
  * Strava OAuth callback — exchanges auth code for tokens, bootstraps history, generates first plan
  */
 
-import { getUserByChatId, upsertUser, saveActivities, saveWeeklyPlan, getActivitiesForUser } from "../src/supabase.js";
+import { getUserByChatId, upsertUser, saveActivities, saveWeeklyPlan, getActiveDays } from "../src/supabase.js";
 import { getActivities } from "../src/strava.js";
 import { generateWeeklyPlan } from "../src/ai.js";
 import { sendMessage } from "../src/telegram.js";
@@ -63,16 +63,11 @@ export default async function handler(req, res) {
     const { activities } = await getActivities(tokens.refresh_token, 90);
     await saveActivities(updatedUser.id, activities);
 
-    const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const [history, recent] = await Promise.all([
-      getActivitiesForUser(updatedUser.id, sixMonthsAgo),
-      getActivitiesForUser(updatedUser.id, weekAgo),
-    ]);
+    const activities = await getActiveDays(updatedUser.id, 30, 180);
 
     const llmConfig = { provider: updatedUser.preferred_llm || "gemini", apiKey: updatedUser.llm_api_key };
     const userProfile = { fitnessLevel: updatedUser.fitness_level, fitnessGoal: updatedUser.fitness_goal, daysPerWeek: updatedUser.days_per_week, gender: updatedUser.gender, weightKg: updatedUser.weight_kg, age: updatedUser.age, heightCm: updatedUser.height_cm };
-    const plan = await generateWeeklyPlan(recent, history, updatedUser.context_notes || "", updatedUser.fitness_background, llmConfig, null, userProfile);
+    const plan = await generateWeeklyPlan(activities, updatedUser.context_notes || "", updatedUser.fitness_background, llmConfig, null, userProfile);
 
     const today = new Date();
     const monday = new Date(today);

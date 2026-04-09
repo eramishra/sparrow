@@ -3,7 +3,7 @@
  * Generates a weekly workout plan for every active user
  */
 
-import { getAllActiveUsers, getActivitiesForUser, getLastActivityDate, saveActivities, saveWeeklyPlan, upsertUser, saveUsage } from "../../src/supabase.js";
+import { getAllActiveUsers, getLastActivityDate, saveActivities, saveWeeklyPlan, upsertUser, saveUsage } from "../../src/supabase.js";
 import { getActivitiesSince } from "../../src/strava.js";
 import { answerQuestion } from "../../src/ai.js";
 import { sendMessage } from "../../src/telegram.js";

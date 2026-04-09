@@ -32,16 +32,28 @@ async function withRetry(fn, maxAttempts = 3, delayMs = 4000) {
 
 async function geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile) {
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genai.getGenerativeModel({
-    model: "gemini-2.5-flash",
-    generationConfig: { responseMimeType: "application/json" },
-  });
-  const result = await model.generateContent(buildPlanPrompt(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile));
-  const meta = result.response.usageMetadata;
-  return {
-    data: JSON.parse(result.response.text()),
-    usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: "gemini-2.5-flash", provider: "gemini" },
-  };
+  const prompt = buildPlanPrompt(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  const models = ["gemini-2.5-flash", "gemini-1.5-flash"];
+  let lastErr;
+  for (const modelId of models) {
+    try {
+      const model = genai.getGenerativeModel({ model: modelId, generationConfig: { responseMimeType: "application/json" } });
+      const result = await model.generateContent(prompt);
+      const meta = result.response.usageMetadata;
+      return {
+        data: JSON.parse(result.response.text()),
+        usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: modelId, provider: "gemini" },
+      };
+    } catch (err) {
+      if (isOverloaded(err)) {
+        console.warn(`[ai] ${modelId} overloaded, trying next model...`);
+        lastErr = err;
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw lastErr;
 }
 
 async function geminiQA(question, plan, recentActivities, contextNotes, userProfile) {
@@ -129,11 +141,10 @@ async function openaiQA(apiKey, question, plan, recentActivities, contextNotes, 
 
 export async function generateWeeklyPlan(recentActivities, historyActivities, contextNotes = "", fitnessBackground = "already_active", llmConfig = {}, startDate = null, userProfile = {}) {
   const { provider = "gemini", apiKey } = llmConfig;
-  const result = await withRetry(() => {
-    if (provider === "claude") return claudePlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-    if (provider === "openai") return openaiPlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-    return geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
-  });
+  let result;
+  if (provider === "claude") result = await claudePlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  else if (provider === "openai") result = await openaiPlan(apiKey, recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
+  else result = await geminiPlan(recentActivities, historyActivities, contextNotes, fitnessBackground, startDate, userProfile);
   return { ...result.data, usage: result.usage };
 }
 

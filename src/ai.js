@@ -10,7 +10,8 @@ import { buildPlanPrompt, buildQAPrompt, buildHowToPrompt, buildActivityFeedback
 
 function isOverloaded(err) {
   const msg = err.message?.toLowerCase() ?? "";
-  return msg.includes("503") || msg.includes("529") || msg.includes("overloaded") || msg.includes("high demand");
+  return msg.includes("503") || msg.includes("529") || msg.includes("429") ||
+    msg.includes("overloaded") || msg.includes("high demand") || msg.includes("quota") || msg.includes("rate limit");
 }
 
 async function withRetry(fn, maxAttempts = 3, delayMs = 4000) {
@@ -33,7 +34,7 @@ async function withRetry(fn, maxAttempts = 3, delayMs = 4000) {
 async function geminiPlan(activities, contextNotes, fitnessBackground, startDate, userProfile) {
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const prompt = buildPlanPrompt(activities, contextNotes, fitnessBackground, startDate, userProfile);
-  const models = ["gemini-2.5-flash", "gemini-1.5-flash"];
+  const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
   let lastErr;
   for (const modelId of models) {
     try {
@@ -58,13 +59,28 @@ async function geminiPlan(activities, contextNotes, fitnessBackground, startDate
 
 async function geminiQA(question, plan, recentActivities, contextNotes, userProfile) {
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
-  const result = await model.generateContent(buildQAPrompt(question, plan, recentActivities, contextNotes, userProfile));
-  const meta = result.response.usageMetadata;
-  return {
-    text: result.response.text().trim(),
-    usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: "gemini-2.5-flash", provider: "gemini" },
-  };
+  const prompt = buildQAPrompt(question, plan, recentActivities, contextNotes, userProfile);
+  const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+  let lastErr;
+  for (const modelId of models) {
+    try {
+      const model = genai.getGenerativeModel({ model: modelId });
+      const result = await model.generateContent(prompt);
+      const meta = result.response.usageMetadata;
+      return {
+        text: result.response.text().trim(),
+        usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: modelId, provider: "gemini" },
+      };
+    } catch (err) {
+      if (isOverloaded(err)) {
+        console.warn(`[ai] ${modelId} overloaded in QA, trying next model...`);
+        lastErr = err;
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw lastErr;
 }
 
 // ─── Claude ────────────────────────────────────────────────────────────────

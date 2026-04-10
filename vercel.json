@@ -1,7 +1,9 @@
 {
   "functions": {
     "api/webhook.js": { "maxDuration": 60 },
-    "api/strava-webhook.js": { "maxDuration": 60 }
+    "api/strava-webhook.js": { "maxDuration": 60 },
+    "api/cron/weekly-plan.js": { "maxDuration": 300 },
+    "api/cron/daily-reminder.js": { "maxDuration": 60 }
   },
   "crons": [
     {

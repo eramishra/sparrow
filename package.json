@@ -4,7 +4,11 @@
   "description": "AI fitness coach — connects Strava, plans weekly workouts, sends daily Telegram reminders",
   "type": "module",
   "scripts": {
-    "deploy": "url=$(vercel deploy --prod | grep -o 'https://[^ ]*\\.vercel\\.app' | tail -1) && echo \"Deployed: $url\" && vercel alias set $url talktosparrow.vercel.app"
+    "test": "node scripts/test-suite.mjs",
+    "test:full": "node scripts/test-suite.mjs --full --debug",
+    "test:setup": "node scripts/setup-test-users.mjs",
+    "test:hooks": "node scripts/install-hooks.mjs",
+    "deploy": "node scripts/test-suite.mjs --full --debug && url=$(vercel deploy --prod | grep -o 'https://[^ ]*\\.vercel\\.app' | tail -1) && echo \"Deployed: $url\" && vercel alias set $url talktosparrow.vercel.app"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

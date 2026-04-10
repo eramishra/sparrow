@@ -19,14 +19,15 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  let users;
+  let allUsers;
   try {
-    users = await getAllActiveUsers();
+    allUsers = await getAllActiveUsers();
   } catch (err) {
     console.error("[daily-reminder] Failed to fetch users:", err.message, err.stack);
     return res.status(500).json({ error: "Failed to fetch users", detail: err.message });
   }
-  console.log(`[daily-reminder] Processing ${users.length} users`);
+  const users = allUsers.filter(u => !/^test-/i.test(String(u.telegram_chat_id)));
+  console.log(`[daily-reminder] Processing ${users.length} users (${allUsers.length - users.length} test users skipped)`);
   const tomorrow = getTomorrowName();
   let success = 0, failed = 0;
 
@@ -44,6 +45,13 @@ export default async function handler(req, res) {
       failed++;
       console.error(`[daily-reminder] ERROR for chat_id=${user.telegram_chat_id}: ${err.message}\n${err.stack}`);
     }
+  }
+
+  if (failed > 0) {
+    const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "8659046367";
+    await sendMessage(ADMIN_CHAT_ID,
+      `⚠️ Daily reminder cron finished with errors: ${success} ok, ${failed} failed. Check Vercel logs.`
+    ).catch(() => {});
   }
 
   res.status(200).json({ ok: true, success, failed });

@@ -177,7 +177,7 @@ IMPORTANT RULES:
 Today's date: ${todayStr}
 Current week: ${weekRangeStr}
 ${formatProfile(userProfile)}${contextSection}
-Current week's plan (${plan?.week_starting ?? plan?.weekStarting ?? ""}):
+Current week's plan (week of ${monday.toDateString()}):
 ${planSummary}
 
 Recent activities:

@@ -3,9 +3,15 @@
  *
  * GET  /api/strava-webhook  — subscription verification (one-time, called by Strava)
  * POST /api/strava-webhook  — activity event handler (called on every new activity)
+ *
+ * NOTE: Vercel freezes the Lambda immediately after res.json() is called, so all
+ * processing must complete BEFORE responding. Strava requires a 200 within 2 seconds,
+ * so it will mark the first delivery as a timeout and retry in ~10 minutes. On retry,
+ * we detect the duplicate (activity already in DB) and respond 200 instantly.
+ * The user still receives their Telegram feedback message within seconds.
  */
 
-import { getUserByStravaAthleteId, upsertUser, saveActivities, getLatestPlan, saveUsage } from "../src/supabase.js";
+import { getUserByStravaAthleteId, upsertUser, saveActivities, getLatestPlan, saveUsage, getActivityByStravaId } from "../src/supabase.js";
 import { refreshStravaToken, getActivityById } from "../src/strava.js";
 import { sendMessage } from "../src/telegram.js";
 import { generateActivityFeedback } from "../src/ai.js";
@@ -27,16 +33,22 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const { object_type, aspect_type, object_id: activityId, owner_id: stravaAthleteId } = req.body;
 
-    // Acknowledge immediately — Strava requires a 200 within 2 seconds
-    res.status(200).json({ ok: true });
-
-    if (object_type !== "activity" || aspect_type !== "create") return;
+    if (object_type !== "activity" || aspect_type !== "create") {
+      return res.status(200).json({ ok: true });
+    }
 
     try {
       const user = await getUserByStravaAthleteId(stravaAthleteId);
       if (!user || !user.strava_connected) {
         console.log(`[strava-webhook] No connected user for athlete_id=${stravaAthleteId}`);
-        return;
+        return res.status(200).json({ ok: true });
+      }
+
+      // Idempotency: if already processed (Strava retry), skip LLM+Telegram and respond quickly
+      const existing = await getActivityByStravaId(user.id, activityId);
+      if (existing) {
+        console.log(`[strava-webhook] Activity ${activityId} already processed, skipping`);
+        return res.status(200).json({ ok: true });
       }
 
       let tokens;
@@ -45,12 +57,12 @@ export default async function handler(req, res) {
       } catch (err) {
         if (err.message === "STRAVA_APP_NOT_APPROVED") {
           console.warn(`[strava-webhook] App not yet approved — skipping activity ${activityId}`);
-          return;
+          return res.status(200).json({ ok: true });
         }
         if (err.message === "STRAVA_DEAUTHORIZED") {
           await upsertUser(user.telegram_chat_id, { strava_connected: false });
           await sendMessage(user.telegram_chat_id, "Your Strava connection has expired. Use /connect to reconnect.").catch(() => {});
-          return;
+          return res.status(200).json({ ok: true });
         }
         throw err;
       }
@@ -83,5 +95,7 @@ export default async function handler(req, res) {
         console.error(`[strava-webhook] ERROR for athlete_id=${stravaAthleteId}: ${err.message}\n${err.stack}`);
       }
     }
+
+    return res.status(200).json({ ok: true });
   }
 }

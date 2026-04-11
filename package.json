@@ -8,12 +8,13 @@
     "test:full": "node scripts/test-suite.mjs --full --debug",
     "test:setup": "node scripts/setup-test-users.mjs",
     "test:hooks": "node scripts/install-hooks.mjs",
-    "deploy": "node scripts/test-suite.mjs --full --debug && url=$(vercel deploy --prod | grep -o 'https://[^ ]*\\.vercel\\.app' | tail -1) && echo \"Deployed: $url\" && vercel alias set $url talktosparrow.vercel.app"
+    "deploy": "node scripts/test-suite.mjs --full --debug && url=$(vercel deploy --prod | grep -o 'https://sparrow-[a-z0-9]*-aibuilder\\.vercel\\.app' | head -1) && echo \"Deployed: $url\" && vercel alias set $url talktosparrow.vercel.app && node scripts/smoke-test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.47.0",
+    "@vercel/functions": "^3.4.3",
     "@vercel/og": "^0.11.1",
     "react": "^19.2.4"
   }

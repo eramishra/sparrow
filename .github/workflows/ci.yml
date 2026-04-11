@@ -1,0 +1,79 @@
+name: Test & Deploy
+
+# Only runs on direct pushes to main (not on PRs).
+# PRs from forks cannot access secrets — this trigger ensures they never try.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # ── 1. Pre-deploy: run the full test suite against real Supabase test users ──
+  test:
+    name: Pre-deploy tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run test suite
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/test-suite.mjs
+
+  # ── 2. Deploy to Vercel (only if tests passed) ────────────────────────────
+  deploy:
+    name: Deploy to Vercel
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      deploy-url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Deploy
+        id: deploy
+        run: |
+          url=$(npx vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }} \
+            | grep -o 'https://[^ ]*\.vercel\.app' | tail -1)
+          echo "url=$url" >> $GITHUB_OUTPUT
+          echo "Deployed to: $url"
+
+      - name: Alias to production domain
+        run: |
+          npx vercel alias set ${{ steps.deploy.outputs.url }} talktosparrow.vercel.app \
+            --token ${{ secrets.VERCEL_TOKEN }}
+
+  # ── 3. Post-deploy: smoke test the live URL + send Telegram alert ─────────
+  smoke-test:
+    name: Post-deploy smoke test
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run smoke test
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+        run: node scripts/smoke-test.mjs

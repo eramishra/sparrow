@@ -161,6 +161,12 @@ export function buildQAPrompt(question, plan, recentActivities, contextNotes = "
 
   const today = new Date();
   const todayStr = `${DAY_NAMES[today.getDay()]}, ${today.toDateString()}`;
+  const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - daysToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const weekRangeStr = `${monday.toDateString()} – ${sunday.toDateString()}`;
 
   return `You are a knowledgeable, supportive personal fitness coach. Answer the athlete's question with crisp, well-formatted responses using bold headers and bullet points. Be highly actionable — every point should tell the athlete exactly what to do. No fluff, no filler sentences.
 
@@ -169,6 +175,7 @@ IMPORTANT RULES:
 - You are NOT a plan generator. If the athlete asks you to create, generate, redesign, or suggest a new workout plan or weekly schedule, do not do it — tell them to use /newplan instead. Your role is to coach around the existing plan, not replace it.
 
 Today's date: ${todayStr}
+Current week: ${weekRangeStr}
 ${formatProfile(userProfile)}${contextSection}
 Current week's plan (${plan?.week_starting ?? plan?.weekStarting ?? ""}):
 ${planSummary}

@@ -224,10 +224,24 @@ export async function generateActivityFeedback(activity, plannedDay, llmConfig =
   }
 
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
-  const result = await model.generateContent(prompt);
-  const meta = result.response.usageMetadata;
-  return { text: result.response.text().trim(), usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: "gemini-2.5-flash", provider: "gemini" } };
+  const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+  let lastErr;
+  for (const modelId of models) {
+    try {
+      const model = genai.getGenerativeModel({ model: modelId });
+      const result = await model.generateContent(prompt);
+      const meta = result.response.usageMetadata;
+      return { text: result.response.text().trim(), usage: { inputTokens: meta?.promptTokenCount ?? 0, outputTokens: meta?.candidatesTokenCount ?? 0, model: modelId, provider: "gemini" } };
+    } catch (err) {
+      if (isOverloaded(err)) {
+        console.warn(`[ai] ${modelId} overloaded in feedback, trying next model...`);
+        lastErr = err;
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw lastErr;
 }
 
 export async function answerQuestion(question, plan, recentActivities, contextNotes = "", llmConfig = {}, userProfile = {}) {

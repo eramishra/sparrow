@@ -20,7 +20,7 @@
 import { createInterface } from "readline";
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "fs";
-import { generateWeeklyPlan, answerQuestion, generateActivityFeedback } from "../src/ai.js";
+import { answerQuestion, generateActivityFeedback } from "../src/ai.js";
 import { getRemainingDays } from "../src/prompts.js";
 
 // ── Load env ───────────────────────────────────────────────────────────────
@@ -65,26 +65,8 @@ async function loadUser(name = null) {
   return data;
 }
 
-async function loadPlan(userId) {
-  const { data } = await supabase
-    .from("weekly_plans")
-    .select("*")
-    .eq("user_id", userId)
-    .order("week_starting", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data;
-}
-
-async function loadActivities(userId) {
-  const since = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
-  const { data } = await supabase
-    .from("fitness_activities")
-    .select("*")
-    .eq("user_id", userId)
-    .gte("started_at", since)
-    .order("started_at", { ascending: false });
-  return data || [];
+function since28Days() {
+  return new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
 }
 
 // ── Format plan ────────────────────────────────────────────────────────────
@@ -101,6 +83,7 @@ function formatPlan(plan) {
 async function main() {
   process.env.MOCK_TELEGRAM = "true"; // set before any webhook import — intercepts all Telegram calls
   const { handleActiveUser, handleOnboarding, handleCallbackQuery } = await import("../api/webhook.js");
+  const { getLatestPlan, getActivitiesForUser } = await import("../src/supabase.js");
 
   console.clear();
   console.log(bold(`\n🐦 Sparrow Test CLI`));
@@ -113,8 +96,8 @@ async function main() {
     process.exit(1);
   }
 
-  let plan = await loadPlan(user.id);
-  let activities = await loadActivities(user.id);
+  let plan = await getLatestPlan(user.id);
+  let activities = await getActivitiesForUser(user.id, since28Days());
 
   // Session overrides
   let sessionContext = user.context_notes;
@@ -245,8 +228,8 @@ async function main() {
         console.log(`${tag(c.red, "✗")} No user found matching "${name}".\n`);
       } else {
         user = newUser;
-        plan = await loadPlan(user.id);
-        activities = await loadActivities(user.id);
+        plan = await getLatestPlan(user.id);
+        activities = await getActivitiesForUser(user.id, since28Days());
         sessionContext = user.context_notes;
         llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
         process.stdout.write("\r" + " ".repeat(30) + "\r");
@@ -258,8 +241,8 @@ async function main() {
     if (text === "/reload") {
       process.stdout.write(dim("  Reloading…"));
       user = await loadUser(user.display_name);
-      plan = await loadPlan(user.id);
-      activities = await loadActivities(user.id);
+      plan = await getLatestPlan(user.id);
+      activities = await getActivitiesForUser(user.id, since28Days());
       sessionContext = user.context_notes;
       llmConfig = { provider: user.preferred_llm || "gemini", apiKey: user.llm_api_key };
       process.stdout.write("\r" + " ".repeat(20) + "\r");
@@ -317,7 +300,7 @@ async function main() {
         const feedback = await generateActivityFeedback(todayActivity, plannedDay, llmConfig);
         const elapsed = ((Date.now() - start) / 1000).toFixed(1);
         process.stdout.write("\r" + " ".repeat(40) + "\r");
-        console.log(`\n${tag(c.blue, "sparrow")} › ${feedback}\n`);
+        console.log(`\n${tag(c.blue, "sparrow")} › ${feedback.text}\n`);
         console.log(dim(`  ${llmConfig.provider} · ${elapsed}s`));
       } catch (err) {
         process.stdout.write("\r" + " ".repeat(40) + "\r");
@@ -338,7 +321,7 @@ async function main() {
       const answer = await answerQuestion(text, plan, activities, sessionContext, llmConfig);
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
       process.stdout.write("\r" + " ".repeat(30) + "\r");
-      console.log(`\n${tag(c.blue, "sparrow")} › ${answer}\n`);
+      console.log(`\n${tag(c.blue, "sparrow")} › ${answer.text}\n`);
       console.log(dim(`  ${llmConfig.provider} · ${elapsed}s`));
     } catch (err) {
       process.stdout.write("\r" + " ".repeat(30) + "\r");

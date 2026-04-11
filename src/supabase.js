@@ -50,6 +50,16 @@ export async function saveActivities(userId, activities) {
   if (error) throw error;
 }
 
+export async function getActivityByStravaId(userId, stravaActivityId) {
+  const { data } = await supabase
+    .from("fitness_activities")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("strava_activity_id", stravaActivityId)
+    .maybeSingle();
+  return data;
+}
+
 export async function getActivitiesForUser(userId, sinceIso) {
   const { data, error } = await supabase
     .from("fitness_activities")
@@ -101,7 +111,34 @@ export async function getLastActivityDate(userId) {
   return data?.started_at || null;
 }
 
+export async function getPlanForWeek(userId, weekStarting) {
+  const { data } = await supabase
+    .from("weekly_plans")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("week_starting", weekStarting)
+    .maybeSingle();
+  return data;
+}
+
 export async function saveWeeklyPlan(userId, weekStarting, plan) {
+  // Delete any stale plans with a different week_starting key in the same Mon–Sun window.
+  // This handles the transition from mid-week keys (e.g. Thursday) to Monday keys.
+  const d = new Date(weekStarting + "T00:00:00");
+  const daysToMonday = d.getDay() === 0 ? 6 : d.getDay() - 1;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - daysToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const mondayStr = monday.toISOString().slice(0, 10);
+  const sundayStr = sunday.toISOString().slice(0, 10);
+  await supabase.from("weekly_plans")
+    .delete()
+    .eq("user_id", userId)
+    .gte("week_starting", mondayStr)
+    .lte("week_starting", sundayStr)
+    .neq("week_starting", weekStarting);
+
   const { error } = await supabase
     .from("weekly_plans")
     .upsert(

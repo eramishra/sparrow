@@ -3,7 +3,7 @@
  * Used by cron, webhook /newplan, /update, and strava-webhook
  */
 
-import { getActiveDays, saveWeeklyPlan } from "./supabase.js";
+import { getActiveDays, saveWeeklyPlan, getPlanForWeek } from "./supabase.js";
 import { generateWeeklyPlan } from "./ai.js";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -79,6 +79,14 @@ export function checkWeekDivergence(plan, activities) {
   };
 }
 
+function getMondayOfWeek(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const daysToMonday = d.getDay() === 0 ? 6 : d.getDay() - 1;
+  d.setDate(d.getDate() - daysToMonday);
+  return d;
+}
+
 export async function generateAndSavePlan(user, startDate = null) {
   const activities = await getActiveDays(user.id, 30, 180);
 
@@ -93,16 +101,69 @@ export async function generateAndSavePlan(user, startDate = null) {
     heightCm: user.height_cm,
   };
 
-  const start = startDate ? new Date(startDate) : (() => {
-    const d = new Date();
-    const daysUntilMonday = d.getDay() === 0 ? 1 : 8 - d.getDay();
-    d.setDate(d.getDate() + daysUntilMonday);
-    return d;
-  })();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  const planResult = await generateWeeklyPlan(activities, user.context_notes, user.fitness_background, llmConfig, start, userProfile);
-  const { usage, ...plan } = planResult;
-  await saveWeeklyPlan(user.id, new Date(start).toISOString().split("T")[0], plan.plan);
+  // Normalise the requested start date
+  let planStart = startDate ? new Date(startDate) : null;
+  if (planStart) planStart.setHours(0, 0, 0, 0);
 
-  return { plan, llmConfig, recent: activities, usage };
+  // Determine week_starting (always a Monday) and the actual first day to generate
+  let weekStarting, effectivePlanStart;
+  const thisMonday = getMondayOfWeek(today);
+  const nextMonday = new Date(thisMonday);
+  nextMonday.setDate(thisMonday.getDate() + 7);
+
+  if (!planStart || planStart >= nextMonday) {
+    // Cron path (or no date): planStart IS a future Monday — generate full week
+    weekStarting = planStart ?? nextMonday;
+    effectivePlanStart = weekStarting;
+  } else {
+    // /newplan or mid-week divergence: planStart is today (current week)
+    weekStarting = thisMonday;
+
+    if (today.getDay() === 0) {
+      // Sunday: check if cron already ran for next week
+      const nextWeekPlan = await getPlanForWeek(user.id, nextMonday.toISOString().slice(0, 10));
+      if (nextWeekPlan) {
+        // Post-cron Sunday: regenerate next week instead
+        weekStarting = nextMonday;
+        effectivePlanStart = nextMonday;
+      } else {
+        // Pre-cron Sunday: add Sunday to this week's plan
+        effectivePlanStart = today;
+      }
+    } else {
+      // Mon–Sat: generate from today through Sunday
+      effectivePlanStart = today;
+    }
+  }
+
+  const weekStartingStr = weekStarting.toISOString().slice(0, 10);
+
+  const planResult = await generateWeeklyPlan(activities, user.context_notes, user.fitness_background, llmConfig, effectivePlanStart, userProfile);
+  const { usage, ...generated } = planResult;
+
+  // Merge: if generating mid-week, preserve existing plan days before today
+  let finalPlanDays = generated.plan;
+  const effectivePlanStartStr = effectivePlanStart.toISOString().slice(0, 10);
+  if (effectivePlanStartStr !== weekStartingStr) {
+    const existing = await getPlanForWeek(user.id, weekStartingStr);
+    if (existing?.plan) {
+      const todayName = DAY_NAMES[today.getDay()];
+      const todayIndex = ORDERED_DAYS.indexOf(todayName);
+      const merged = {};
+      for (const day of ORDERED_DAYS) {
+        if (ORDERED_DAYS.indexOf(day) < todayIndex && existing.plan[day]) {
+          merged[day] = existing.plan[day];
+        }
+      }
+      Object.assign(merged, finalPlanDays);
+      finalPlanDays = merged;
+    }
+  }
+
+  await saveWeeklyPlan(user.id, weekStartingStr, finalPlanDays);
+
+  return { plan: { ...generated, plan: finalPlanDays }, llmConfig, recent: activities, usage };
 }

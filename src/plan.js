@@ -123,16 +123,9 @@ export async function generateAndSavePlan(user, startDate = null) {
     weekStarting = thisMonday;
 
     if (today.getDay() === 0) {
-      // Sunday: check if cron already ran for next week
-      const nextWeekPlan = await getPlanForWeek(user.id, nextMonday.toISOString().slice(0, 10));
-      if (nextWeekPlan) {
-        // Post-cron Sunday: regenerate next week instead
-        weekStarting = nextMonday;
-        effectivePlanStart = nextMonday;
-      } else {
-        // Pre-cron Sunday: add Sunday to this week's plan
-        effectivePlanStart = today;
-      }
+      // Sunday: always generate for the coming full week (Mon–Sun)
+      weekStarting = nextMonday;
+      effectivePlanStart = nextMonday;
     } else {
       // Mon–Sat: generate from today through Sunday
       effectivePlanStart = today;

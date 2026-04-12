@@ -18,12 +18,15 @@ import { readFileSync } from 'fs';
 import { createClient } from '@supabase/supabase-js';
 
 // ── Env & flags ───────────────────────────────────────────────────────────────
-const env = Object.fromEntries(
-  readFileSync('.env.local', 'utf-8')
-    .split('\n').filter(l => l.includes('='))
-    .map(l => { const [k, ...v] = l.split('='); return [k.trim(), v.join('=').replace(/^"|"$/g, '').trim()]; })
-);
-Object.assign(process.env, env);
+// Load .env.local if present (local dev). In CI, env vars are injected by GitHub Actions.
+try {
+  const env = Object.fromEntries(
+    readFileSync('.env.local', 'utf-8')
+      .split('\n').filter(l => l.includes('='))
+      .map(l => { const [k, ...v] = l.split('='); return [k.trim(), v.join('=').replace(/^"|"$/g, '').trim()]; })
+  );
+  Object.assign(process.env, env);
+} catch {}
 process.env.MOCK_TELEGRAM = 'true'; // intercept all Telegram calls — must be set before import
 
 const FULL  = process.argv.includes('--full');
@@ -34,7 +37,7 @@ const B = 'test-sparrow-b';  // ephemeral
 const C = 'test-sparrow-c';  // no Strava
 
 // ── Supabase ──────────────────────────────────────────────────────────────────
-const sb = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 async function dbUser(chatId) {
   const { data } = await sb.from('users').select('*').eq('telegram_chat_id', String(chatId)).maybeSingle();
@@ -99,7 +102,7 @@ async function sim(chatId, text) {
 async function simHandler(chatId, text) {
   const req = {
     method: 'POST',
-    headers: { 'x-telegram-bot-api-secret-token': env.TELEGRAM_WEBHOOK_SECRET },
+    headers: { 'x-telegram-bot-api-secret-token': process.env.TELEGRAM_WEBHOOK_SECRET },
     body: { message: { chat: { id: chatId }, from: { first_name: 'Test' }, text } },
   };
   let statusCode;

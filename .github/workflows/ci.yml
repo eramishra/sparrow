@@ -61,15 +61,15 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           echo "Waiting for Vercel deployment to become ready..."
-          # Record workflow start time in ms — only consider deployments created after this
-          START_MS=$(date -u +%s%3N)
+          # Use push timestamp — Vercel deployment is created at push time, before this job starts
+          PUSH_MS=$(date -d "${{ github.event.head_commit.timestamp }}" +%s%3N)
           for i in $(seq 1 30); do
             STATUS=$(curl -s \
               "https://api.vercel.com/v6/deployments?projectId=${PROJECT_ID}&teamId=${TEAM_ID}&limit=5&sort=created&order=desc" \
               -H "Authorization: Bearer ${VERCEL_TOKEN}" \
               | node -e "
                 const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-                const dep = (data.deployments || []).find(d => d.created >= ${START_MS});
+                const dep = (data.deployments || []).find(d => d.created >= ${PUSH_MS});
                 if (!dep) { console.log('waiting'); process.exit(0); }
                 console.log(dep.readyState || dep.state || 'unknown');
               ")

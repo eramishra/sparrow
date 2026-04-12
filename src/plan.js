@@ -164,5 +164,7 @@ export async function generateAndSavePlan(user, startDate = null) {
 
   await saveWeeklyPlan(user.id, weekStartingStr, finalPlanDays);
 
-  return { plan: { ...generated, plan: finalPlanDays }, llmConfig, recent: activities, usage };
+  // Override weekStarting with the canonical Monday display string (LLM may alter it)
+  const weekStartingDisplay = weekStarting.toDateString();
+  return { plan: { ...generated, weekStarting: weekStartingDisplay, plan: finalPlanDays }, llmConfig, recent: activities, usage };
 }

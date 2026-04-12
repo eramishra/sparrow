@@ -64,6 +64,9 @@ export function buildPlanPrompt(activities, contextNotes = "", fitnessBackground
   const startIndex = ORDERED_DAYS.indexOf(startDayName);
   const daysToGenerate = startIndex === -1 ? ORDERED_DAYS : ORDERED_DAYS.slice(startIndex);
 
+  const endDate = new Date(start);
+  endDate.setDate(start.getDate() + daysToGenerate.length - 1);
+
   const jsonTemplate = daysToGenerate
     .map((day) => `    "${day}": { "workout": "...", "duration": "...", "notes": "..." }`)
     .join(",\n");
@@ -82,7 +85,7 @@ ${formatActivities(activities)}
 ## Instructions
 The history above is sorted newest-first. Entries from the last 7 days are at the top — treat these as your primary load and recovery signal. Avoid scheduling hard sessions immediately after back-to-back hard days or high-HR efforts.
 
-Create a realistic, well-balanced plan from ${start.toDateString()} through Sunday. For each day:
+Create a realistic, well-balanced plan for exactly the ${daysToGenerate.length} days from ${start.toDateString()} to ${endDate.toDateString()} (inclusive). Do not add days before ${start.toDateString()}. For each day:
 - workout: specific activity name (e.g. "Easy 5km Run", "Upper Body Strength", "Rest Day")
 - duration: time range (e.g. "45-60 min", "30 min", "—")
 - notes: one crisp, highly actionable coaching tip — tell the athlete exactly what to do, no fluff

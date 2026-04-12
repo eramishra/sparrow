@@ -61,18 +61,18 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           echo "Waiting for Vercel deployment to become ready..."
-          # Use push timestamp — Vercel deployment is created at push time, before this job starts
-          PUSH_MS=$(date -d "${{ github.event.head_commit.timestamp }}" +%s%3N)
+          # Debug: show raw API response on first attempt
+          RESPONSE=$(curl -s \
+            "https://api.vercel.com/v6/deployments?projectId=${PROJECT_ID}&teamId=${TEAM_ID}&limit=3" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}")
+          echo "API response (first 500 chars): ${RESPONSE:0:500}"
           for i in $(seq 1 30); do
-            STATUS=$(curl -s \
-              "https://api.vercel.com/v6/deployments?projectId=${PROJECT_ID}&teamId=${TEAM_ID}&limit=5&sort=created&order=desc" \
-              -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-              | node -e "
-                const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-                const dep = (data.deployments || []).find(d => d.created >= ${PUSH_MS});
-                if (!dep) { console.log('waiting'); process.exit(0); }
-                console.log(dep.readyState || dep.state || 'unknown');
-              ")
+            STATUS=$(echo "$RESPONSE" | node -e "
+              const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+              const dep = data.deployments?.[0];
+              if (!dep) { console.log('no_deployments'); process.exit(0); }
+              console.log(dep.readyState || dep.state || 'unknown');
+            ")
             echo "  attempt $i: $STATUS"
             if [ "$STATUS" = "READY" ]; then
               echo "Deployment is ready."
@@ -82,6 +82,9 @@ jobs:
               exit 1
             fi
             sleep 10
+            RESPONSE=$(curl -s \
+              "https://api.vercel.com/v6/deployments?projectId=${PROJECT_ID}&teamId=${TEAM_ID}&limit=3" \
+              -H "Authorization: Bearer ${VERCEL_TOKEN}")
           done
           echo "Timed out waiting for deployment (5 min)"
           exit 1

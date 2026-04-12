@@ -418,10 +418,11 @@ export async function handleActiveUser(user, chatId, text) {
     try {
       const { plan, usage: planUsage } = await generateAndSavePlan(user, new Date());
       saveUsage(user.id, "plan", planUsage.provider, planUsage.model, planUsage.inputTokens, planUsage.outputTokens);
-      const summary = Object.entries(plan.plan)
-        .map(([day, d]) => `*${day}*\n• ${d.workout} (${d.duration})\n• ${d.notes}`)
+      const DAY_ORDER = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+      const summary = DAY_ORDER.filter(d => plan.plan[d])
+        .map(d => `*${d}*\n• ${plan.plan[d].workout} (${plan.plan[d].duration})\n• ${plan.plan[d].notes}`)
         .join("\n\n");
-      await sendMessage(chatId, `*Your Fresh Plan — from ${new Date().toDateString()}*\n\n${summary}`);
+      await sendMessage(chatId, `*Your Fresh Plan — Week of ${plan.weekStarting}*\n\n${summary}`);
     } catch (err) {
       console.error(`[/newplan] ERROR for chat_id=${chatId}: ${err.message}`);
       const errMsg = isLlmOverloaded(err) ? LLM_BUSY_MSG : isLlmAuthError(err) ? LLM_AUTH_MSG : "Couldn't generate your plan. Try again in a moment.";

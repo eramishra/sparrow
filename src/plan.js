@@ -137,8 +137,14 @@ export async function generateAndSavePlan(user, startDate = null) {
   const planResult = await generateWeeklyPlan(activities, user.context_notes, user.fitness_background, llmConfig, effectivePlanStart, userProfile);
   const { usage, ...generated } = planResult;
 
+  // Normalize day order to Mon–Sun regardless of LLM key insertion order
+  const rawPlanDays = {};
+  for (const day of ORDERED_DAYS) {
+    if (generated.plan[day]) rawPlanDays[day] = generated.plan[day];
+  }
+
   // Merge: if generating mid-week, preserve existing plan days before today
-  let finalPlanDays = generated.plan;
+  let finalPlanDays = rawPlanDays;
   const effectivePlanStartStr = effectivePlanStart.toISOString().slice(0, 10);
   if (effectivePlanStartStr !== weekStartingStr) {
     const existing = await getPlanForWeek(user.id, weekStartingStr);

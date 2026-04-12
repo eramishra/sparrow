@@ -6,8 +6,12 @@ on:
   push:
     branches: [main]
 
+env:
+  PROJECT_ID: prj_pP9HV0o8704lN2EP8rbMoYnUpEvS
+  TEAM_ID: team_SZL6zrSEfrC3mU7SAtkFFzIi
+
 jobs:
-  # ── 1. Pre-deploy: run the full test suite against real Supabase test users ──
+  # ── 1. Pre-deploy tests (runs in parallel with Vercel's auto-deploy) ───────
   test:
     name: Pre-deploy tests
     runs-on: ubuntu-latest
@@ -27,40 +31,20 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/test-suite.mjs
 
-  # ── 2. Deploy to Vercel (only if tests passed) ────────────────────────────
-  deploy:
-    name: Deploy to Vercel
-    needs: test
-    runs-on: ubuntu-latest
-    outputs:
-      deploy-url: ${{ steps.deploy.outputs.url }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - run: npm ci
-
-      - name: Deploy
-        id: deploy
+      - name: Alert on test failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
         run: |
-          url=$(npx vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }} \
-            | grep -o 'https://[^ ]*\.vercel\.app' | tail -1)
-          echo "url=$url" >> $GITHUB_OUTPUT
-          echo "Deployed to: $url"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${ADMIN_CHAT_ID}\",\"text\":\"❌ *Sparrow deploy FAILED* — pre-deploy tests failed on commit \`$(echo $GITHUB_SHA | cut -c1-7)\`\nCheck: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\",\"parse_mode\":\"Markdown\"}"
 
-      - name: Alias to production domain
-        run: |
-          npx vercel alias set ${{ steps.deploy.outputs.url }} talktosparrow.vercel.app \
-            --token ${{ secrets.VERCEL_TOKEN }}
-
-  # ── 3. Post-deploy: smoke test the live URL + send Telegram alert ─────────
+  # ── 2. Wait for Vercel auto-deploy to finish, then smoke test ─────────────
   smoke-test:
     name: Post-deploy smoke test
-    needs: deploy
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +55,33 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+
+      - name: Wait for Vercel deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          echo "Waiting for Vercel deployment to become ready..."
+          SHA=${{ github.sha }}
+          for i in $(seq 1 24); do
+            STATUS=$(curl -s "https://api.vercel.com/v6/deployments?projectId=${PROJECT_ID}&teamId=${TEAM_ID}&limit=5" \
+              -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+              | node -e "
+                const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+                const dep = (d.deployments||[]).find(x => x.meta?.githubCommitSha === '$SHA');
+                console.log(dep ? dep.state : 'not_found');
+              ")
+            echo "  attempt $i: $STATUS"
+            if [ "$STATUS" = "READY" ]; then
+              echo "Deployment is ready."
+              exit 0
+            elif [ "$STATUS" = "ERROR" ] || [ "$STATUS" = "CANCELED" ]; then
+              echo "Deployment failed with status: $STATUS"
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for deployment"
+          exit 1
 
       - name: Run smoke test
         env:

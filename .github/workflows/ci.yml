@@ -6,12 +6,8 @@ on:
   push:
     branches: [main]
 
-env:
-  PROJECT_ID: prj_pP9HV0o8704lN2EP8rbMoYnUpEvS
-  TEAM_ID: team_SZL6zrSEfrC3mU7SAtkFFzIi
-
 jobs:
-  # ── 1. Pre-deploy tests (runs in parallel with Vercel's auto-deploy) ───────
+  # ── 1. Pre-deploy tests ────────────────────────────────────────────────────
   test:
     name: Pre-deploy tests
     runs-on: ubuntu-latest
@@ -41,9 +37,9 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"chat_id\":\"${ADMIN_CHAT_ID}\",\"text\":\"❌ *Sparrow deploy FAILED* — pre-deploy tests failed on commit \`$(echo $GITHUB_SHA | cut -c1-7)\`\nCheck: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\",\"parse_mode\":\"Markdown\"}"
 
-  # ── 2. Wait for Vercel auto-deploy to finish, then smoke test ─────────────
-  smoke-test:
-    name: Post-deploy smoke test
+  # ── 2. Deploy to Vercel, then smoke test ───────────────────────────────────
+  deploy:
+    name: Deploy & smoke test
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -56,36 +52,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Wait for Vercel deployment
+      - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          echo "Waiting for Vercel deployment to become ready..."
-          RESPONSE=$(curl -s \
-            "https://api.vercel.com/v6/deployments?projectId=${PROJECT_ID}&teamId=${TEAM_ID}&limit=3" \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}")
-          for i in $(seq 1 30); do
-            STATUS=$(echo "$RESPONSE" | node -e "
-              const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-              const dep = data.deployments?.[0];
-              if (!dep) { console.log('no_deployments'); process.exit(0); }
-              console.log(dep.readyState || dep.state || 'unknown');
-            ")
-            echo "  attempt $i: $STATUS"
-            if [ "$STATUS" = "READY" ]; then
-              echo "Deployment is ready."
-              exit 0
-            elif [ "$STATUS" = "ERROR" ] || [ "$STATUS" = "CANCELED" ]; then
-              echo "Deployment failed with status: $STATUS"
-              exit 1
-            fi
-            sleep 10
-            RESPONSE=$(curl -s \
-              "https://api.vercel.com/v6/deployments?projectId=${PROJECT_ID}&teamId=${TEAM_ID}&limit=3" \
-              -H "Authorization: Bearer ${VERCEL_TOKEN}")
-          done
-          echo "Timed out waiting for deployment (5 min)"
-          exit 1
+        run: npx vercel --prod --token $VERCEL_TOKEN --yes
 
       - name: Run smoke test
         env:
